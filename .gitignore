@@ -1,0 +1,28 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# test coverage
+/coverage/
+
+# env
+.env
+.env*.local
+
+# data — real booking submissions, keep out of git
+/data/bookings.json
+/data/bookings.json.imported
+/data/*.db
+/data/*.db-wal
+/data/*.db-shm
+
+# misc
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
