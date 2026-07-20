@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as t from "@/lib/templates";
 import type { Booking, BookingPlan } from "@/lib/types";
 
-// Product copy uses an en dash / em dash / arrow. Build them from code points so
-// no literal em/en dash lands in this source (a project-wide formatting rule).
+// Product copy uses an en dash / arrow. Build them from code points so no literal
+// en dash lands in this source (a project-wide formatting rule). Empty values now
+// render as a plain ASCII hyphen.
 const EN = String.fromCharCode(0x2013);
-const EM = String.fromCharCode(0x2014);
 const ARROW = String.fromCharCode(0x2192);
 
 const base: Booking = {
@@ -25,7 +25,7 @@ describe("date formatting", () => {
   });
 
   it("formatDateRangeShort", () => {
-    expect(t.formatDateRangeShort(undefined, undefined)).toBe(EM);
+    expect(t.formatDateRangeShort(undefined, undefined)).toBe("-");
     expect(t.formatDateRangeShort(undefined, "2026-07-02")).toBe("02/07/26");
     expect(t.formatDateRangeShort("2026-06-30", undefined)).toBe("30/06/26");
     expect(t.formatDateRangeShort("2026-07-02", "2026-07-02")).toBe("02/07/26");

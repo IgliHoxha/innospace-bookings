@@ -4,7 +4,7 @@
  * Feature-flagged by TURNSTILE_SECRET_KEY: while the secret is unset, verification
  * is skipped entirely (returns { ok: true, skipped: true }) so the booking flow
  * works unchanged until you provision keys. Once the secret is set, a missing or
- * invalid token is rejected — so deploy the widget (website site key) at the same
+ * invalid token is rejected - so deploy the widget (website site key) at the same
  * time you set this secret.
  */
 const SITEVERIFY_URL =

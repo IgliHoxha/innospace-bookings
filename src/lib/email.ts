@@ -19,7 +19,7 @@ function baseUrl(): string {
 function client(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn("[email] RESEND_API_KEY not set — skipping email.");
+    console.warn("[email] RESEND_API_KEY not set - skipping email.");
     return null;
   }
   return new Resend(apiKey);
@@ -86,7 +86,7 @@ export async function sendCustomerStatusEmail(
   const resend = client();
   if (!resend) return;
   if (!booking.email) {
-    console.warn("[email] booking has no email — skipping customer email.");
+    console.warn("[email] booking has no email - skipping customer email.");
     return;
   }
 

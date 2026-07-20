@@ -139,7 +139,7 @@ export function formatDateRangeShort(
 ): string {
   const f = formatDMYShort(from);
   const t = formatDMYShort(to);
-  if (!f && !t) return "—";
+  if (!f && !t) return "-";
   if (!f) return t;
   if (!t || f === t) return f;
   return `${f} → ${t}`;

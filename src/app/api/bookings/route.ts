@@ -6,7 +6,7 @@ import { corsHeaders, isOriginAllowed, requestOrigin } from "@/lib/cors";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
 
-// This route touches the filesystem and node:crypto — force the Node runtime.
+// This route touches the filesystem and node:crypto - force the Node runtime.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     // Honeypot: `company` is a hidden field real users never fill. If a bot
     // auto-fills it, silently accept (so it doesn't retry) but store nothing.
     if (typeof body.company === "string" && body.company.trim() !== "") {
-      console.warn("[bookings] honeypot tripped — dropping submission");
+      console.warn("[bookings] honeypot tripped - dropping submission");
       return NextResponse.json({ ok: true }, { status: 201, headers: cors });
     }
 

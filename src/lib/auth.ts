@@ -32,7 +32,7 @@ export function verifySessionToken(token: string | undefined | null): boolean {
   const exp = Number(expPart);
   if (!Number.isInteger(exp)) return false;
 
-  // Constant-time signature check, then expiry — order doesn't leak validity.
+  // Constant-time signature check, then expiry - order doesn't leak validity.
   const a = Buffer.from(sig);
   const b = Buffer.from(sign(`${PAYLOAD}:${expPart}`));
   if (a.length !== b.length || !timingSafeEqual(a, b)) return false;

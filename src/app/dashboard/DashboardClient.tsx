@@ -108,7 +108,7 @@ export default function DashboardClient({
     setPage(1);
   }, [filter, debouncedQuery]);
 
-  // Skip the first render — the server already supplied page 1.
+  // Skip the first render - the server already supplied page 1.
   const didMount = useRef(false);
   useEffect(() => {
     if (!didMount.current) {
@@ -230,6 +230,15 @@ export default function DashboardClient({
       </div>
 
       <div className="container">
+        <div className="page-head">
+          <span className="eyebrow">Innospace Tirana</span>
+          <h1 className="page-title">Booking requests</h1>
+          <p className="page-subtitle">
+            Review incoming reservations, confirm or cancel, and send the guest
+            their email - all in one place.
+          </p>
+        </div>
+
         <div className="stats">
           <Stat
             num={counts.total}
@@ -350,7 +359,7 @@ export default function DashboardClient({
                       <WhenCell iso={b.createdAt} />
                     </td>
                     <td className="who">
-                      <strong>{b.fullName || "—"}</strong>
+                      <strong>{b.fullName || "-"}</strong>
                       {b.email && (
                         <small>
                           <a href={`mailto:${b.email}`}>{b.email}</a>
@@ -363,11 +372,11 @@ export default function DashboardClient({
                         </small>
                       )}
                     </td>
-                    <td>{b.plan ? bookingTypeLabel(b) : "—"}</td>
+                    <td>{b.plan ? bookingTypeLabel(b) : "-"}</td>
                     <td className="dates">
                       {formatDateRangeShort(b.from, b.to)}
                     </td>
-                    <td style={{ maxWidth: 220 }}>{b.note || "—"}</td>
+                    <td style={{ maxWidth: 220 }}>{b.note || "-"}</td>
                     <td>
                       <span className={`badge ${b.status}`}>{b.status}</span>
                     </td>
@@ -457,6 +466,20 @@ export default function DashboardClient({
         )}
       </div>
 
+      <footer className="site-footer">
+        <div className="site-footer-inner">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className="site-footer-logo"
+            src="/logo.svg"
+            alt="Innospace Tirana"
+          />
+          <span className="site-footer-copy">
+            © {new Date().getFullYear()} Innospace Tirana. All rights reserved.
+          </span>
+        </div>
+      </footer>
+
       {confirmPurge && (
         <div
           className="modal-overlay"
@@ -529,7 +552,7 @@ export default function DashboardClient({
                 ? " It will be hidden from the list (no email is sent)."
                 : pending.email
                   ? ` The ${pending.status === "confirmed" ? "confirmation" : "cancellation"} email (as shown in the Email column) will be sent to ${pending.email}.`
-                  : " (No email on file — nothing will be sent.)"}
+                  : " (No email on file - nothing will be sent.)"}
             </p>
             <div className="modal-actions">
               <button className="btn ghost" onClick={() => setPending(null)}>
@@ -669,7 +692,7 @@ function WhenCell({ iso }: { iso: string }) {
   }, [iso]);
   return (
     <span className="dates" suppressHydrationWarning>
-      {text || "—"}
+      {text || "-"}
     </span>
   );
 }
@@ -692,10 +715,10 @@ function EmailPreview({
 
   // Deleted bookings have no associated email.
   if (booking.status === "deleted") {
-    return <span className="muted">—</span>;
+    return <span className="muted">-</span>;
   }
 
-  // Once actioned, the email is locked — show only the one that was sent.
+  // Once actioned, the email is locked - show only the one that was sent.
   if (booking.status !== "new") {
     const sent = booking.status as EmailStatus;
     const value =

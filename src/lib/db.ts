@@ -14,7 +14,7 @@ import type {
 const DB_FILE =
   process.env.DATA_FILE || path.join(process.cwd(), "data", "bookings.db");
 
-// `from`/`to` are SQL reserved words — keep them quoted.
+// `from`/`to` are SQL reserved words - keep them quoted.
 const COLS =
   'id,createdAt,status,source,fullName,email,phoneNumber,plan,"from","to",note';
 
@@ -203,7 +203,7 @@ export async function createBooking(input: BookingInput): Promise<Booking> {
   return booking;
 }
 
-/** Permanently remove rows — guarded to soft-deleted ones only. Returns the count removed. */
+/** Permanently remove rows - guarded to soft-deleted ones only. Returns the count removed. */
 export async function deleteBookings(ids: string[]): Promise<number> {
   if (ids.length === 0) return 0;
   const db = getDb();
