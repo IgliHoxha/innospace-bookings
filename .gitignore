@@ -30,3 +30,6 @@ next-env.d.ts
 # Deploy config (holds env-specific values; use fly.toml.example as the template).
 # Not committed — configuration lives in `fly secrets`.
 fly.toml
+
+# Local Claude Code instructions (not committed).
+CLAUDE.md
