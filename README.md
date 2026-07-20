@@ -56,6 +56,16 @@ docker compose up -d --build  # http://localhost:4000
 | `ALLOWED_ORIGINS` | Comma-separated origins allowed to POST. `*` allows any. |
 | `DATA_FILE` | SQLite path. Defaults to `./data/bookings.db`. |
 | `PRICE_*` | Pricing packages surfaced in confirmation emails. |
+| `LOGIN_MAX_ATTEMPTS` | Failed logins per IP before a lockout (default `5`). |
+| `LOGIN_BLOCK_SECONDS` | Base lockout duration in seconds; escalates ×N per lockout (default `60`). |
+| `LOGIN_MAX_LOCKOUTS` | Lockouts before an IP is banned outright (default `10`). |
+
+> **Login brute-force protection** is in-memory per-process (see
+> [`src/lib/rate-limit.ts`](src/lib/rate-limit.ts)): after `LOGIN_MAX_ATTEMPTS`
+> failures an IP is locked out for `LOGIN_BLOCK_SECONDS`, each further lockout
+> lasting longer, and after `LOGIN_MAX_LOCKOUTS` lockouts the IP is banned until
+> the process restarts. State is not shared across machines or persisted across
+> restarts — fine for a single Fly machine.
 
 ---
 
@@ -93,16 +103,35 @@ the dashboard has an editable Confirm/Cancel email; your edits are sent verbatim
 
 ## Deploy (Fly.io)
 
-Config in [`fly.toml`](fly.toml) — Docker image, a volume at `/app/data`, env
-vars. Secrets via `fly secrets set`.
+[`fly.toml`](fly.toml) holds **only non-sensitive infrastructure** — Docker
+image, the volume at `/app/data`, the HTTP service, and VM size. It has **no
+`[env]` block**: every runtime variable (credentials, API keys, origins, paths,
+pricing, and the login-throttle thresholds) is stored as an **encrypted Fly
+secret** via `fly secrets set`, so nothing environment-specific or sensitive is
+committed. `.env.example` is the human-readable catalogue of every var.
 
 ```bash
 fly launch --copy-config --no-deploy   # first time only
 fly volumes create bookings_data --region fra --size 1
-fly secrets set RESEND_API_KEY=re_xxx DASHBOARD_PASSWORD='…' AUTH_SECRET="$(openssl rand -hex 32)"
+
+# All runtime config is a secret. Set them once (repeat for every var in .env.example):
+fly secrets set \
+  RESEND_API_KEY=re_xxx EMAIL_FROM='bookings@innospacetirana.com' \
+  DASHBOARD_USERNAME='admin' DASHBOARD_PASSWORD='…' \
+  AUTH_SECRET="$(openssl rand -hex 32)" \
+  ALLOWED_ORIGINS='https://innospacetirana.com,https://www.innospacetirana.com' \
+  DATA_FILE='/app/data/bookings.db' NODE_ENV='production' PORT='4000' HOSTNAME='0.0.0.0' \
+  LOGIN_MAX_ATTEMPTS='5' LOGIN_BLOCK_SECONDS='60' LOGIN_MAX_LOCKOUTS='10' \
+  PRICE_CURRENCY='€' PRICE_DAILY_PASS='15' PRICE_WEEKLY_PASS='60' PRICE_MONTHLY_PASS='170' \
+  PRICE_EVENT_ROOM_HOUR='25' PRICE_EVENT_ROOM_DAY='170'
+
 fly deploy
 fly certs add booking.innospacetirana.com
 ```
+
+> To read or change a value later, use `fly secrets list` (names only) and
+> `fly secrets set KEY=value` (triggers a rolling restart). Editing a secret is
+> the only way to change config — there is no plaintext `[env]` to edit.
 
 Then a Cloudflare `CNAME booking → <app>.fly.dev`. Pushing to `master` also
 auto-deploys via GitHub Actions ([.github/workflows/fly-deploy.yml](.github/workflows/fly-deploy.yml)).
