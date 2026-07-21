@@ -14,6 +14,21 @@ booking form. It:
 - **Stack:** Next.js 15 (App Router) · React 19 · TypeScript · better-sqlite3 · Resend
 - **Hosting:** Fly.io (Docker) behind `booking.innospacetirana.com`
 
+<p align="center">
+  <img src="docs/img/dashboard.png" alt="The bookings dashboard: total/new/confirmed/cancelled counters, a search-and-filter bar, and a row per booking with guest details, plan, dates, status badge, and an editable confirm/cancel email" width="900">
+</p>
+
+Filter by status (the counters double as filters) or search across name,
+email, plan, and note:
+
+<p align="center">
+  <img src="docs/img/dashboard-confirmed.png" alt="The dashboard filtered to Confirmed bookings, showing two rows with a green Confirmed badge and the Confirmation sent email each guest received" width="860">
+</p>
+
+<p align="center">
+  <img src="docs/img/dashboard-search.png" alt="The dashboard search box with the query event typed in, narrowing the list to the single matching Event Room booking" width="860">
+</p>
+
 ---
 
 ## Quick start (local)
@@ -79,6 +94,12 @@ docker compose up -d --build  # http://localhost:4000
 - The DB must live on a **persistent disk** (Fly volume / VPS disk), not a
   serverless filesystem.
 
+The dashboard sits behind a branded sign-in (rate-limited per IP):
+
+<p align="center">
+  <img src="docs/img/login.png" alt="The dashboard sign-in screen: Innospace Tirana logo above username and password fields and a Sign in button" width="520">
+</p>
+
 ---
 
 ## API
@@ -98,6 +119,12 @@ docker compose up -d --build  # http://localhost:4000
 `src/lib/templates.ts` holds the confirm/cancel bodies (shared by the mailer and
 the dashboard preview, so the preview matches what's sent). Each booking row in
 the dashboard has an editable Confirm/Cancel email; your edits are sent verbatim.
+
+The customer receives a branded message (the confirmation for a monthly pass):
+
+<p align="center">
+  <img src="docs/img/email-confirm.png" alt="The branded confirmation email a customer receives: Innospace Tirana logo, a Booking confirmed heading, and the confirmation text including the monthly pass dates and rate" width="560">
+</p>
 
 ---
 
