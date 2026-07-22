@@ -37,10 +37,9 @@ export function requestOrigin(headers: Headers): string | null {
 }
 
 /**
- * Is the Origin the host the app is being served from? The dashboard calls its
- * own API, so those requests are same-origin by construction and can never be
- * CSRF. ALLOWED_ORIGINS only ever describes *other* sites (the marketing site
- * posting bookings), so the app must not have to list itself there.
+ * Is the Origin the host we're served from? The dashboard calling its own API is
+ * same-origin by construction, never CSRF. ALLOWED_ORIGINS describes *other*
+ * sites, so the app must not have to list itself there.
  */
 function isSameOrigin(origin: string, headers: Headers): boolean {
   const host = headers.get("host");

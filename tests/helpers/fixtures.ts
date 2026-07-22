@@ -1,8 +1,6 @@
-// Throwaway credentials for the tests. NOT real secrets: each only ever unlocks a
-// per-test temp SQLite DB that is created and deleted inside the test. Every test
-// credential lives here, referenced as a variable (never an inline
-// `password: "..."` literal) and given an obvious "fixture-*" value, so secret
-// scanners don't misread test data as a live key.
+// Throwaway test credentials, NOT real secrets: each only unlocks a temp SQLite
+// DB created and deleted inside the test. Kept here as "fixture-*" variables
+// (never inline literals) so secret scanners don't read them as live keys.
 
 /**
  * Dashboard credentials (DASHBOARD_USERNAME / DASHBOARD_PASSWORD). There is no

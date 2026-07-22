@@ -4,10 +4,9 @@ import { afterEach, vi } from "vitest";
 import { cleanupTmp } from "./helpers/app";
 import { ADMIN_PASS, ADMIN_USER, SIGNING } from "./helpers/fixtures";
 
-// Required env vars have no code default (see lib/env-app), so the suite must
-// supply a deterministic baseline. These mirror the documented .env.example
-// values, so value-dependent tests keep asserting the same numbers. Individual
-// tests still override with vi.stubEnv and restore themselves.
+// Required env vars have no code default (see lib/env-app), so the suite supplies
+// a baseline. It mirrors .env.example, so value-dependent tests keep asserting
+// the same numbers; individual tests still override with vi.stubEnv.
 const REQUIRED_BASELINE: Record<string, string> = {
   AUTH_SECRET: SIGNING,
   DASHBOARD_USERNAME: ADMIN_USER,

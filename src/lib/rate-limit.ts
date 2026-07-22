@@ -1,7 +1,6 @@
-// In-memory brute-force guard for the dashboard login. The app runs as a single
-// long-lived Node process (one Fly machine), so a module-level Map is sufficient
-// (no external store needed). State resets on redeploy/restart, which is fine for
-// login throttling. Keyed by client IP.
+// In-memory brute-force guard for the dashboard login, keyed by client IP. One
+// long-lived Node process (a single Fly machine), so a module-level Map needs no
+// external store; state resetting on redeploy is fine for login throttling.
 
 import { requireIntEnv } from "./env-app";
 

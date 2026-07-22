@@ -1,11 +1,7 @@
 /**
- * Cloudflare Turnstile server-side verification.
- *
- * Feature-flagged by TURNSTILE_SECRET_KEY: while the secret is unset, verification
- * is skipped entirely (returns { ok: true, skipped: true }) so the booking flow
- * works unchanged until you provision keys. Once the secret is set, a missing or
- * invalid token is rejected - so deploy the widget (website site key) at the same
- * time you set this secret.
+ * Cloudflare Turnstile verification, feature-flagged by TURNSTILE_SECRET_KEY:
+ * unset skips it entirely, set rejects a missing or invalid token. So publish the
+ * widget's site key on the website at the same time you set this secret.
  */
 import { optionalEnv } from "./env-app";
 
