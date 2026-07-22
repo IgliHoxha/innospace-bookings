@@ -9,8 +9,7 @@ import {
 } from "@/lib/types";
 import {
   corsHeaders,
-  isOriginAllowed,
-  requestOrigin,
+  isRequestOriginAllowed,
   requireAllowedOrigin,
 } from "@/lib/cors";
 import { verifyTurnstile } from "@/lib/turnstile";
@@ -34,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   // Server-side origin gate: reject browser requests from origins not on the
   // ALLOWED_ORIGINS list. No-op while that list is "*" (the default).
-  if (!isOriginAllowed(requestOrigin(req.headers))) {
+  if (!isRequestOriginAllowed(req.headers)) {
     return NextResponse.json(
       { ok: false, error: "Forbidden." },
       { status: 403, headers: cors },

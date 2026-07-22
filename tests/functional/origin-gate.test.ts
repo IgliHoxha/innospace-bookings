@@ -52,6 +52,21 @@ describe("origin gate on mutating handlers", () => {
     await expectForbidden(res);
   });
 
+  // Regression: the dashboard posts to its own API from the host it is served
+  // on. That is same-origin, never CSRF, so it must pass without the app's own
+  // origin being listed in ALLOWED_ORIGINS.
+  it("allows the dashboard calling its own API (same-origin, not on the list)", async () => {
+    const route = await import("@/app/api/login/route");
+    const res = await route.DELETE(
+      makeRequest("http://dash.test/api/login", {
+        method: "DELETE",
+        headers: { origin: "https://dash.test", host: "dash.test" },
+        token: sessionToken(),
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+
   it("still allows a request from the configured origin", async () => {
     const route = await import("@/app/api/login/route");
     const res = await route.POST(
