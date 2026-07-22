@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createBooking, queryBookings, deleteBookings } from "@/lib/db";
-import { BOOKING_PLANS, BOOKING_STATUSES } from "@/lib/types";
-import type { BookingInput, BookingPlan, BookingStatus } from "@/lib/types";
-import { corsHeaders, isOriginAllowed, requestOrigin } from "@/lib/cors";
+import {
+  BOOKING_PLANS,
+  BOOKING_STATUSES,
+  type BookingInput,
+  type BookingPlan,
+  type BookingStatus,
+} from "@/lib/types";
+import {
+  corsHeaders,
+  isOriginAllowed,
+  requestOrigin,
+  requireAllowedOrigin,
+} from "@/lib/cors";
 import { verifyTurnstile } from "@/lib/turnstile";
-import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
 
 // This route touches the filesystem and node:crypto - force the Node runtime.
 export const runtime = "nodejs";
@@ -91,13 +101,8 @@ const VALID_FILTERS: readonly string[] = ["all", ...BOOKING_STATUSES];
 
 /** Protected: the dashboard fetches a page of the list. Requires a session. */
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!verifySessionToken(token)) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const denied = requireSession(req);
+  if (denied) return denied;
 
   const sp = req.nextUrl.searchParams;
   const filterParam = sp.get("status") ?? "all";
@@ -116,13 +121,11 @@ export async function GET(req: NextRequest) {
 
 /** Protected: permanently remove soft-deleted bookings from the DB. */
 export async function DELETE(req: NextRequest) {
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!verifySessionToken(token)) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
+  const denied = requireSession(req);
+  if (denied) return denied;
 
   const { ids } = (await req.json().catch(() => ({}))) as { ids?: unknown };
   if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {

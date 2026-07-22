@@ -3,16 +3,22 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
-import { BOOKING_PLANS, BOOKING_STATUSES } from "./types";
-import type {
-  Booking,
-  BookingInput,
-  BookingPlan,
-  BookingStatus,
+import {
+  BOOKING_PLANS,
+  BOOKING_STATUSES,
+  type Booking,
+  type BookingInput,
+  type BookingPlan,
+  type BookingStatus,
 } from "./types";
+import { optionalEnv } from "./env-app";
 
-const DB_FILE =
-  process.env.DATA_FILE || path.join(process.cwd(), "data", "bookings.db");
+/** Where the SQLite file lives. Read lazily so tests can point it at a temp file. */
+function dbFile(): string {
+  return (
+    optionalEnv("DATA_FILE") ?? path.join(process.cwd(), "data", "bookings.db")
+  );
+}
 
 // `from`/`to` are SQL reserved words - keep them quoted.
 const COLS =
@@ -32,22 +38,78 @@ const TABLE_BODY = `(
 
 type Row = Record<string, string | number | null>;
 
-// Lazy singleton: open on first query, not at import time (avoids running during build).
+// Ordered schema migrations keyed by target `PRAGMA user_version`: each runs once,
+// in a transaction, on any DB below its version, then bumps it. To change the
+// schema, append a new { version: N+1, up } entry - never edit a shipped one.
+type Migration = { version: number; up: (db: Database.Database) => void };
+
+const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    up: (db) => {
+      db.exec(`CREATE TABLE IF NOT EXISTS bookings ${TABLE_BODY};`);
+      // Serves the list's ORDER BY createdAt DESC: reverse-scanned, so LIMIT
+      // stops early without a sort.
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bookings_createdAt ON bookings(createdAt);`,
+      );
+    },
+  },
+];
+
+/** The schema version this build expects: the highest migration defined. */
+export const SCHEMA_VERSION = MIGRATIONS.reduce(
+  (max, m) => Math.max(max, m.version),
+  0,
+);
+
+/** Apply any migrations newer than the DB's current `user_version`. */
+function migrate(db: Database.Database): void {
+  const current = db.pragma("user_version", { simple: true }) as number;
+  for (const m of MIGRATIONS) {
+    if (m.version <= current) continue;
+    // DDL + the version bump in one transaction: a failed migration rolls back
+    // wholesale, so we never leave the DB half-migrated.
+    db.transaction(() => {
+      m.up(db);
+      db.pragma(`user_version = ${m.version}`);
+    })();
+  }
+}
+
+// Lazy singleton: opened on the first query, not at import (never runs at build).
+// _stmts caches prepared statements for this connection (see prep); both reset
+// together, so the cache can never outlive the connection it was compiled against.
 let _db: Database.Database | null = null;
+let _stmts: Map<string, Database.Statement> | null = null;
 function getDb(): Database.Database {
   if (_db) return _db;
-  fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
-  const db = new Database(DB_FILE);
+  const file = dbFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const db = new Database(file);
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
-  db.exec(`CREATE TABLE IF NOT EXISTS bookings ${TABLE_BODY};
-CREATE INDEX IF NOT EXISTS idx_bookings_createdAt ON bookings(createdAt);`);
+  migrate(db);
   _db = db;
+  _stmts = new Map();
   return db;
 }
 
-function insert(db: Database.Database, b: Booking) {
-  db.prepare(
+// A prepared statement compiled once per connection and reused. Pass only static
+// SQL: a query whose text varies per call (dynamic WHERE / placeholder count)
+// would fill the cache with one-off entries, so those keep using db.prepare.
+function prep(sql: string): Database.Statement {
+  const db = getDb();
+  let stmt = _stmts!.get(sql);
+  if (!stmt) {
+    stmt = db.prepare(sql);
+    _stmts!.set(sql, stmt);
+  }
+  return stmt;
+}
+
+function insert(b: Booking) {
+  prep(
     `INSERT INTO bookings (${COLS}) VALUES (@id,@createdAt,@status,@source,@fullName,@email,@phoneNumber,@plan,@from,@to,@note)`,
   ).run(toRow(b));
 }
@@ -86,9 +148,9 @@ function fromRow(r: Row): Booking {
 }
 
 export async function listBookings(): Promise<Booking[]> {
-  const rows = getDb()
-    .prepare("SELECT * FROM bookings ORDER BY createdAt DESC")
-    .all() as Row[];
+  const rows = prep(
+    "SELECT * FROM bookings ORDER BY createdAt DESC",
+  ).all() as Row[];
   return rows.map(fromRow);
 }
 
@@ -117,18 +179,16 @@ export interface BookingQuery {
 
 const SEARCH_COLS = ["fullName", "email", "phoneNumber", "plan", "note"];
 
-function bookingCounts(db: Database.Database): BookingCounts {
-  const r = db
-    .prepare(
-      `SELECT
+function bookingCounts(): BookingCounts {
+  const r = prep(
+    `SELECT
          SUM(CASE WHEN status != 'deleted' THEN 1 ELSE 0 END) AS total,
          SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) AS "new",
          SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) AS confirmed,
          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
          SUM(CASE WHEN status = 'deleted' THEN 1 ELSE 0 END) AS deleted
        FROM bookings`,
-    )
-    .get() as Record<string, number | null>;
+  ).get() as Record<string, number | null>;
   return {
     total: Number(r.total ?? 0),
     new: Number(r.new ?? 0),
@@ -187,7 +247,7 @@ export async function queryBookings(
     total,
     page,
     pageSize,
-    counts: bookingCounts(db),
+    counts: bookingCounts(),
   };
 }
 
@@ -199,7 +259,7 @@ export async function createBooking(input: BookingInput): Promise<Booking> {
     status: "new",
     source: "website",
   };
-  insert(getDb(), booking);
+  insert(booking);
   return booking;
 }
 
@@ -220,12 +280,12 @@ export async function updateBookingStatus(
   id: string,
   status: BookingStatus,
 ): Promise<Booking | null> {
-  const db = getDb();
-  const res = db
-    .prepare("UPDATE bookings SET status = ? WHERE id = ?")
-    .run(status, id);
+  const res = prep("UPDATE bookings SET status = ? WHERE id = ?").run(
+    status,
+    id,
+  );
   if (res.changes === 0) return null;
-  const row = db.prepare("SELECT * FROM bookings WHERE id = ?").get(id) as
+  const row = prep("SELECT * FROM bookings WHERE id = ?").get(id) as
     Row | undefined;
   return row ? fromRow(row) : null;
 }

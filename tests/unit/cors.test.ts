@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { corsHeaders, isOriginAllowed, requestOrigin } from "@/lib/cors";
+import {
+  corsHeaders,
+  isOriginAllowed,
+  requestOrigin,
+  requireAllowedOrigin,
+} from "@/lib/cors";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -27,6 +32,34 @@ describe("requestOrigin", () => {
     ).toBe("https://b.com");
     expect(requestOrigin(new Headers({ referer: "not a url" }))).toBeNull();
     expect(requestOrigin(new Headers())).toBeNull();
+  });
+});
+
+describe("requireAllowedOrigin", () => {
+  it("passes (null) while ALLOWED_ORIGINS is unset, whatever the origin", () => {
+    expect(
+      requireAllowedOrigin(new Headers({ origin: "https://evil.com" })),
+    ).toBeNull();
+  });
+
+  it("passes an allowed origin, and a request with no origin at all", () => {
+    vi.stubEnv("ALLOWED_ORIGINS", "https://a.com");
+    expect(
+      requireAllowedOrigin(new Headers({ origin: "https://a.com" })),
+    ).toBeNull();
+    expect(
+      requireAllowedOrigin(new Headers({ referer: "https://a.com/page" })),
+    ).toBeNull();
+    expect(requireAllowedOrigin(new Headers())).toBeNull();
+  });
+
+  it("403s a disallowed origin with a safe error body", async () => {
+    vi.stubEnv("ALLOWED_ORIGINS", "https://a.com");
+    const res = requireAllowedOrigin(
+      new Headers({ origin: "https://evil.com" }),
+    );
+    expect(res?.status).toBe(403);
+    expect(await res?.json()).toEqual({ ok: false, error: "Forbidden" });
   });
 });
 

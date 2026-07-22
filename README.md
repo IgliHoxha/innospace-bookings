@@ -62,35 +62,46 @@ docker compose up -d --build  # http://localhost:4000
 
 ## Environment variables (`.env`)
 
-| Var | Purpose |
-| --- | --- |
-| `RESEND_API_KEY` | Resend API key. If empty, emails are skipped (bookings still stored). |
-| `EMAIL_FROM` | Verified Resend sender (e.g. `bookings@innospacetirana.com`). |
-| `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` | Seed the first admin user into the DB on a fresh database. |
-| `AUTH_SECRET` | Long random string signing the login cookie (`openssl rand -hex 32`). |
-| `ALLOWED_ORIGINS` | Comma-separated origins allowed to POST. `*` allows any. |
-| `DATA_FILE` | SQLite path. Defaults to `./data/bookings.db`. |
-| `PRICE_*` | Pricing packages surfaced in confirmation emails. |
-| `LOGIN_MAX_ATTEMPTS` | Failed logins per IP before a lockout (default `5`). |
-| `LOGIN_BLOCK_SECONDS` | Base lockout duration in seconds; escalates ×N per lockout (default `60`). |
-| `LOGIN_MAX_LOCKOUTS` | Lockouts before an IP is banned outright (default `10`). |
+All access goes through [`src/lib/env-app.ts`](src/lib/env-app.ts). **Required**
+vars have no code fallback: the app throws on first use when one is missing, so a
+misconfigured deploy fails loudly instead of silently running on a default.
+
+| Var | Required | Purpose |
+| --- | --- | --- |
+| `RESEND_API_KEY` | no | Resend API key. If empty, emails are skipped (bookings still stored). |
+| `EMAIL_FROM` | yes | Verified Resend sender (e.g. `bookings@innospacetirana.com`). |
+| `APP_BASE_URL` | no | Base URL for links/logo in emails. Defaults to the production host. |
+| `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` | yes | Dashboard sign-in credentials. |
+| `AUTH_SECRET` | yes | Long random string signing the login cookie (`openssl rand -hex 32`). |
+| `ALLOWED_ORIGINS` | no | Comma-separated origins allowed to POST and to call mutating routes. Unset means any. |
+| `TURNSTILE_SECRET_KEY` | no | Cloudflare Turnstile secret. If empty, verification is skipped. |
+| `DATA_FILE` | no | SQLite path. Defaults to `./data/bookings.db`. |
+| `PRICE_CURRENCY` | yes | Currency symbol used in every rate line. |
+| `PRICE_*` (amounts) | no | Pricing packages surfaced in confirmation emails; an unpriced plan omits its rate line. |
+| `LOGIN_MAX_ATTEMPTS` | yes | Failed logins per IP before a lockout. |
+| `LOGIN_BLOCK_SECONDS` | yes | Base lockout duration in seconds; escalates xN per lockout. |
+| `LOGIN_MAX_LOCKOUTS` | yes | Lockouts before an IP is banned outright. |
+| `BUSINESS_NAME` | yes | Org name that signs off every email. |
+| `BUSINESS_WEBSITE_URL` | no | Footer link. Defaults to `https://innospacetirana.com`. |
+| `EMAIL_SIGNOFF_NAME`, other `BUSINESS_*` | no | Contact / access lines; each is omitted from the footer when blank. |
 
 > **Login brute-force protection** is in-memory per-process (see
 > [`src/lib/rate-limit.ts`](src/lib/rate-limit.ts)): after `LOGIN_MAX_ATTEMPTS`
 > failures an IP is locked out for `LOGIN_BLOCK_SECONDS`, each further lockout
 > lasting longer, and after `LOGIN_MAX_LOCKOUTS` lockouts the IP is banned until
 > the process restarts. State is not shared across machines or persisted across
-> restarts — fine for a single Fly machine.
+> restarts: fine for a single Fly machine.
 
 ---
 
 ## Data & auth
 
-- **SQLite** (`better-sqlite3`) — one file on a persistent disk, WAL mode.
-  `bookings` table plus a `users` table.
-- **Login** is verified against the `users` table (scrypt-hashed passwords). The
-  first admin is **seeded once** from `DASHBOARD_USERNAME`/`DASHBOARD_PASSWORD`;
-  after that the database is the source of truth.
+- **SQLite** (`better-sqlite3`): one `bookings` table in a single file on a
+  persistent disk, WAL mode. The schema is applied by an ordered migration list
+  in [`src/lib/db.ts`](src/lib/db.ts) keyed on `PRAGMA user_version`; to change
+  it, append a new entry rather than editing a shipped one.
+- **Login** is verified against `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` in
+  constant time, then a session is minted as an HMAC-signed, httpOnly cookie.
 - The DB must live on a **persistent disk** (Fly volume / VPS disk), not a
   serverless filesystem.
 
@@ -104,13 +115,17 @@ The dashboard sits behind a branded sign-in (rate-limited per IP):
 
 ## API
 
-- `POST /api/bookings` — public; the website posts a booking here (CORS-limited
-  to `ALLOWED_ORIGINS`). Accepts the structured payload or the legacy
-  `{ message, _email }` shape. `201` on success.
-- `GET /api/bookings` — protected; returns all bookings, newest first.
-- `PATCH /api/bookings/:id` — protected; `{ status, emailBody? }`. On
+- `POST /api/bookings`: public; the website posts a booking here (origin-gated to
+  `ALLOWED_ORIGINS`, honeypot + Turnstile). `201` on success.
+- `GET /api/bookings`: protected; a filtered, searchable, paginated page.
+- `DELETE /api/bookings`: protected; permanently removes soft-deleted rows.
+- `PATCH /api/bookings/:id`: protected; `{ status, emailBody? }`. On
   confirm/cancel, emails the customer (uses `emailBody` if provided).
-- `POST` / `DELETE /api/login` — sign in (sets cookie) / sign out.
+- `POST` / `DELETE /api/login`: sign in (sets cookie) / sign out.
+
+Every state-changing handler runs `requireAllowedOrigin` first (CSRF defense in
+depth alongside the `sameSite=lax` cookie), then the session guard in
+[`src/lib/api-auth.ts`](src/lib/api-auth.ts).
 
 ---
 
@@ -130,7 +145,7 @@ The customer receives a branded message (the confirmation for a monthly pass):
 
 ## Deploy (Fly.io)
 
-[`fly.toml`](fly.toml) holds **only non-sensitive infrastructure** — Docker
+[`fly.toml`](fly.toml) holds **only non-sensitive infrastructure**: Docker
 image, the volume at `/app/data`, the HTTP service, and VM size. It has **no
 `[env]` block**: every runtime variable (credentials, API keys, origins, paths,
 pricing, and the login-throttle thresholds) is stored as an **encrypted Fly
@@ -150,7 +165,8 @@ fly secrets set \
   DATA_FILE='/app/data/bookings.db' NODE_ENV='production' PORT='4000' HOSTNAME='0.0.0.0' \
   LOGIN_MAX_ATTEMPTS='5' LOGIN_BLOCK_SECONDS='60' LOGIN_MAX_LOCKOUTS='10' \
   PRICE_CURRENCY='€' PRICE_DAILY_PASS='15' PRICE_WEEKLY_PASS='60' PRICE_MONTHLY_PASS='170' \
-  PRICE_EVENT_ROOM_HOUR='25' PRICE_EVENT_ROOM_DAY='170'
+  PRICE_EVENT_ROOM_HOUR='25' PRICE_EVENT_ROOM_DAY='170' \
+  BUSINESS_NAME='InnoSpace Tirana'
 
 fly deploy
 fly certs add booking.innospacetirana.com
@@ -158,7 +174,7 @@ fly certs add booking.innospacetirana.com
 
 > To read or change a value later, use `fly secrets list` (names only) and
 > `fly secrets set KEY=value` (triggers a rolling restart). Editing a secret is
-> the only way to change config — there is no plaintext `[env]` to edit.
+> the only way to change config: there is no plaintext `[env]` to edit.
 
 Then a Cloudflare `CNAME booking → <app>.fly.dev`. Pushing to `master` also
 auto-deploys via GitHub Actions ([.github/workflows/fly-deploy.yml](.github/workflows/fly-deploy.yml)).

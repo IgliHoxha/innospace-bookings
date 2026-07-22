@@ -1,24 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateBookingStatus } from "@/lib/db";
 import { sendCustomerStatusEmail } from "@/lib/email";
-import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
-import { BOOKING_STATUSES } from "@/lib/types";
-import type { BookingStatus } from "@/lib/types";
+import { requireSession } from "@/lib/api-auth";
+import { requireAllowedOrigin } from "@/lib/cors";
+import { BOOKING_STATUSES, type BookingStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /** Protected: update a booking's status from the dashboard. */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!verifySessionToken(token)) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
+  const denied = requireSession(req);
+  if (denied) return denied;
 
   const { id } = await params;
   const { status, emailBody } = (await req.json().catch(() => ({}))) as {

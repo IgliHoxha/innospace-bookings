@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp } from "../helpers/app";
-import { DEFAULT_ADMIN_PASS, DEFAULT_ADMIN_USER } from "../helpers/fixtures";
+import { ADMIN_PASS, ADMIN_USER } from "../helpers/fixtures";
 
 // resetApp() re-imports the route (and with it a fresh in-memory limiter Map),
 // so every test starts with a clean slate.
@@ -28,9 +28,9 @@ const post = (body: unknown, ip = "1.1.1.1") =>
   );
 
 const wrong = (ip?: string) =>
-  post({ username: DEFAULT_ADMIN_USER, password: "nope" }, ip);
+  post({ username: ADMIN_USER, password: "nope" }, ip);
 const right = (ip?: string) =>
-  post({ username: DEFAULT_ADMIN_USER, password: DEFAULT_ADMIN_PASS }, ip);
+  post({ username: ADMIN_USER, password: ADMIN_PASS }, ip);
 
 describe("POST /api/login brute-force throttling", () => {
   it("locks out with 429 + Retry-After after the attempt threshold", async () => {

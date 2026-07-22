@@ -100,11 +100,11 @@ describe("registerFailure", () => {
     expect(rl.checkBlocked("ip").banned).toBe(true);
   });
 
-  it("defaults to 5 attempts / 60s / 10 lockouts when env is unset or invalid", () => {
+  it("throws on a non-integer or non-positive setting (no silent fallback)", () => {
     vi.stubEnv("LOGIN_MAX_ATTEMPTS", "not-a-number");
-    const s = failN("ip", 5);
-    expect(s.blocked).toBe(true);
-    expect(s.retryAfterSeconds).toBe(60);
+    expect(() => rl.registerFailure("ip")).toThrow(/LOGIN_MAX_ATTEMPTS/);
+    vi.stubEnv("LOGIN_MAX_ATTEMPTS", "0");
+    expect(() => rl.registerFailure("ip")).toThrow(/positive integer/);
   });
 });
 

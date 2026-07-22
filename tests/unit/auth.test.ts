@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  ADMIN_PASS,
-  ADMIN_USER,
-  DEFAULT_ADMIN_PASS,
-  DEFAULT_ADMIN_USER,
-  SIGNING_ALT,
-} from "../helpers/fixtures";
+import { ADMIN_PASS, ADMIN_USER, SIGNING_ALT } from "../helpers/fixtures";
 import {
   checkCredentials,
   createSessionToken,
@@ -42,23 +36,24 @@ describe("session tokens", () => {
     expect(verifySessionToken(tok)).toBe(false);
   });
 
-  it("still round-trips on the built-in secret when AUTH_SECRET is unset", () => {
-    vi.stubEnv("AUTH_SECRET", undefined);
-    expect(verifySessionToken(createSessionToken())).toBe(true);
+  it("throws rather than signing with a fallback when AUTH_SECRET is unset", () => {
+    vi.stubEnv("AUTH_SECRET", "");
+    expect(() => createSessionToken()).toThrow(/AUTH_SECRET/);
   });
 });
 
 describe("dashboard credentials", () => {
   it("matches the configured env credentials only", () => {
-    vi.stubEnv("DASHBOARD_USERNAME", ADMIN_USER);
-    vi.stubEnv("DASHBOARD_PASSWORD", ADMIN_PASS);
     expect(checkCredentials(ADMIN_USER, ADMIN_PASS)).toBe(true);
     expect(checkCredentials(ADMIN_USER, "wrong")).toBe(false);
     expect(checkCredentials("wrong", ADMIN_PASS)).toBe(false);
     expect(checkCredentials("", "")).toBe(false);
   });
 
-  it("falls back to the admin/change-me defaults", () => {
-    expect(checkCredentials(DEFAULT_ADMIN_USER, DEFAULT_ADMIN_PASS)).toBe(true);
+  it("throws when the credentials are not configured (no built-in default)", () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "");
+    expect(() => checkCredentials(ADMIN_USER, ADMIN_PASS)).toThrow(
+      /DASHBOARD_PASSWORD/,
+    );
   });
 });

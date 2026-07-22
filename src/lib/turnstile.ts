@@ -7,6 +7,8 @@
  * invalid token is rejected - so deploy the widget (website site key) at the same
  * time you set this secret.
  */
+import { optionalEnv } from "./env-app";
+
 const SITEVERIFY_URL =
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
@@ -20,7 +22,7 @@ export async function verifyTurnstile(
   token: string | undefined,
   remoteIp?: string | null,
 ): Promise<TurnstileResult> {
-  const secret = process.env.TURNSTILE_SECRET_KEY?.trim();
+  const secret = optionalEnv("TURNSTILE_SECRET_KEY");
   if (!secret) return { ok: true, skipped: true };
 
   if (!token) return { ok: false, errors: ["missing-input-response"] };

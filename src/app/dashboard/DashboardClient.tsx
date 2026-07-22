@@ -2,18 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Booking, BookingStatus } from "@/lib/types";
+import type { Booking, BookingStatus, ContactInfo, Pricing } from "@/lib/types";
 import type { BookingPage } from "@/lib/db";
 import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
+import { formatDateRangeShort, formatDateTime } from "@/lib/datetime";
 import {
   bookingTypeLabel,
   emailBodyText,
   emailSubject,
-  formatDateRangeShort,
-  formatDateTime,
-  type ContactInfo,
   type EmailStatus,
-  type Pricing,
 } from "@/lib/templates";
 
 const FILTERS: { key: "all" | BookingStatus; label: string }[] = [
@@ -618,7 +615,7 @@ function Pagination({
   return (
     <div className="pagination">
       <span className="pagination-info">
-        {first}–{lastRow} of {total}
+        {first}-{lastRow} of {total}
         {loading ? " · loading…" : ""}
       </span>
       {totalPages > 1 && (

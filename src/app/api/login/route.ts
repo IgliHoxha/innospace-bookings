@@ -11,6 +11,8 @@ import {
   registerFailure,
   registerSuccess,
 } from "@/lib/rate-limit";
+import { requireSession } from "@/lib/api-auth";
+import { requireAllowedOrigin } from "@/lib/cors";
 
 export const runtime = "nodejs";
 
@@ -48,6 +50,9 @@ function lockedResponse(retryAfterSeconds: number) {
 }
 
 export async function POST(req: NextRequest) {
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
   const key = clientKey(req.headers);
 
   // Reject early if this IP is already banned or locked out, before touching creds.
@@ -83,7 +88,16 @@ export async function POST(req: NextRequest) {
   return res;
 }
 
-export async function DELETE() {
+// Logout. Require a valid session so a forged cross-site DELETE can't clear the
+// cookie: with sameSite=lax the session cookie isn't sent cross-site on a DELETE,
+// so requireSession rejects it. A real (same-site) logout carries the cookie.
+export async function DELETE(req: NextRequest) {
+  const blocked = requireAllowedOrigin(req.headers);
+  if (blocked) return blocked;
+
+  const denied = requireSession(req);
+  if (denied) return denied;
+
   const res = NextResponse.json({ ok: true });
   res.cookies.delete(SESSION_COOKIE);
   return res;

@@ -4,13 +4,12 @@
 // `password: "..."` literal) and given an obvious "fixture-*" value, so secret
 // scanners don't misread test data as a live key.
 
-/** Stubbed dashboard env credentials (DASHBOARD_USERNAME / DASHBOARD_PASSWORD). */
+/**
+ * Dashboard credentials (DASHBOARD_USERNAME / DASHBOARD_PASSWORD). There is no
+ * code default any more, so tests/setup.ts stubs these as the baseline env.
+ */
 export const ADMIN_USER = "fixture-admin";
 export const ADMIN_PASS = "fixture-admin-pass";
-
-/** The code's built-in dashboard fallback: real default values, kept out of an inline pair. */
-export const DEFAULT_ADMIN_USER = "admin";
-export const DEFAULT_ADMIN_PASS = "change-me";
 
 /** Dummy HMAC signing secrets (AUTH_SECRET); the two must differ. */
 export const SIGNING = "fixture-signing-a";

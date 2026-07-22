@@ -1,32 +1,46 @@
 import { Resend } from "resend";
-import type { Booking } from "./types";
+import {
+  appBaseUrl,
+  getContactFromEnv,
+  getPricingFromEnv,
+  optionalEnv,
+  requireEnv,
+} from "./env-app";
+import type { Booking, ContactInfo } from "./types";
 import {
   emailBodyText,
   emailHeading,
   emailSubject,
-  getContactFromEnv,
-  getPricingFromEnv,
   type EmailStatus,
 } from "./templates";
 
 const BRAND = "#25bdad";
 const PLUM = "#524552";
+const RED = "#b91c1c";
 
-function baseUrl(): string {
-  return process.env.APP_BASE_URL || "https://booking.innospacetirana.com";
+// Logo is an app asset (public/email-logo.png) served under APP_BASE_URL. In dev
+// that's localhost (unfetchable by mail clients), but dev normally skips sending.
+function emailLogoUrl(): string {
+  return `${appBaseUrl().replace(/\/$/, "")}/email-logo.png`;
 }
 
+// Lazy singleton: one Resend client for the process, built on first send (not at
+// import, so tests/dev with no key never construct it). RESEND_API_KEY is an
+// optional feature-flag: unset skips email. A null isn't cached, so a later key works.
+let _resend: Resend | null = null;
 function client(): Resend | null {
-  const apiKey = process.env.RESEND_API_KEY;
+  if (_resend) return _resend;
+  const apiKey = optionalEnv("RESEND_API_KEY");
   if (!apiKey) {
-    console.warn("[email] RESEND_API_KEY not set - skipping email.");
+    console.warn("[email] RESEND_API_KEY not set: skipping email.");
     return null;
   }
-  return new Resend(apiKey);
+  _resend = new Resend(apiKey);
+  return _resend;
 }
 
 function from(): string {
-  return process.env.EMAIL_FROM || "onboarding@resend.dev";
+  return requireEnv("EMAIL_FROM");
 }
 
 function escapeHtml(s: string): string {
@@ -57,13 +71,16 @@ function shell(opts: {
   accent: string;
   heading: string;
   bodyHtml: string;
+  contact: ContactInfo;
 }): string {
-  const { accent, heading, bodyHtml } = opts;
+  const { accent, heading, bodyHtml, contact } = opts;
+  // Footer website link; visible text drops the scheme and any trailing slash.
+  const website = contact.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
   return `
   <div style="background:#f4f6f8;padding:28px 12px;font-family:'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif">
     <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb">
       <div style="padding:22px 28px;border-bottom:1px solid #eee">
-        <img src="${baseUrl()}/email-logo.png" alt="Innospace Tirana" height="30" style="height:30px;width:auto;display:block" />
+        <img src="${emailLogoUrl()}" alt="${contact.org}" height="30" style="height:30px;width:auto;display:block" />
       </div>
       <div style="height:4px;background:${accent}"></div>
       <div style="padding:28px">
@@ -71,7 +88,7 @@ function shell(opts: {
         ${bodyHtml}
       </div>
       <div style="padding:16px 28px;background:#fafafa;border-top:1px solid #eee;color:#a59ba5;font-size:12px">
-        Innospace Tirana · <a href="https://innospacetirana.com" style="color:${BRAND};text-decoration:none">innospacetirana.com</a>
+        ${contact.org} · <a href="${contact.url}" style="color:${BRAND};text-decoration:none">${website}</a>
       </div>
     </div>
   </div>`;
@@ -86,13 +103,13 @@ export async function sendCustomerStatusEmail(
   const resend = client();
   if (!resend) return;
   if (!booking.email) {
-    console.warn("[email] booking has no email - skipping customer email.");
+    console.warn("[email] booking has no email: skipping customer email.");
     return;
   }
 
+  const contact = getContactFromEnv();
   const body = (
-    customBody ??
-    emailBodyText(booking, status, getPricingFromEnv(), getContactFromEnv())
+    customBody ?? emailBodyText(booking, status, getPricingFromEnv(), contact)
   ).trim();
 
   await resend.emails.send({
@@ -100,9 +117,10 @@ export async function sendCustomerStatusEmail(
     to: [booking.email],
     subject: emailSubject(status, booking),
     html: shell({
-      accent: status === "confirmed" ? BRAND : "#b91c1c",
+      accent: status === "confirmed" ? BRAND : RED,
       heading: emailHeading(status),
       bodyHtml: textToHtml(body),
+      contact,
     }),
   });
 }

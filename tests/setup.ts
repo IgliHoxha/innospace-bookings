@@ -2,31 +2,50 @@
 // Tests override individual vars with vi.stubEnv and restore them themselves.
 import { afterEach, vi } from "vitest";
 import { cleanupTmp } from "./helpers/app";
-import { SIGNING } from "./helpers/fixtures";
+import { ADMIN_PASS, ADMIN_USER, SIGNING } from "./helpers/fixtures";
 
-// A fixed signing secret so minted session tokens verify inside the handlers.
-process.env.AUTH_SECRET = SIGNING;
+// Required env vars have no code default (see lib/env-app), so the suite must
+// supply a deterministic baseline. These mirror the documented .env.example
+// values, so value-dependent tests keep asserting the same numbers. Individual
+// tests still override with vi.stubEnv and restore themselves.
+const REQUIRED_BASELINE: Record<string, string> = {
+  AUTH_SECRET: SIGNING,
+  DASHBOARD_USERNAME: ADMIN_USER,
+  DASHBOARD_PASSWORD: ADMIN_PASS,
+  LOGIN_MAX_ATTEMPTS: "5",
+  LOGIN_BLOCK_SECONDS: "60",
+  LOGIN_MAX_LOCKOUTS: "10",
+  EMAIL_FROM: "onboarding@resend.dev",
+  BUSINESS_NAME: "Test Org",
+  PRICE_CURRENCY: "€",
+};
+for (const [key, value] of Object.entries(REQUIRED_BASELINE)) {
+  process.env[key] = value;
+}
 
-// Clear anything that would otherwise steer auth/email/turnstile/cors logic, so
-// the suite runs against the documented code defaults regardless of the shell env.
+// Optional vars stay OFF for a deterministic suite (email skipped, Turnstile
+// skipped, CORS wildcard, contact footer minimal). DATA_FILE is set per-test by
+// resetApp() to a temp file.
 for (const key of [
-  "DASHBOARD_USERNAME",
-  "DASHBOARD_PASSWORD",
-  "LOGIN_MAX_ATTEMPTS",
-  "LOGIN_BLOCK_SECONDS",
-  "LOGIN_MAX_LOCKOUTS",
   "RESEND_API_KEY",
-  "EMAIL_FROM",
   "APP_BASE_URL",
   "TURNSTILE_SECRET_KEY",
   "ALLOWED_ORIGINS",
   "DATA_FILE",
-  "PRICE_CURRENCY",
   "PRICE_DAILY_PASS",
   "PRICE_WEEKLY_PASS",
   "PRICE_MONTHLY_PASS",
   "PRICE_EVENT_ROOM_HOUR",
   "PRICE_EVENT_ROOM_DAY",
+  "BUSINESS_WEBSITE_URL",
+  "EMAIL_SIGNOFF_NAME",
+  "BUSINESS_ADDRESS",
+  "BUSINESS_ACCESS_APT1",
+  "BUSINESS_ACCESS_APT2",
+  "BUSINESS_MAPS_URL",
+  "BUSINESS_PHONE",
+  "BUSINESS_EMAIL",
+  "BUSINESS_NID",
 ]) {
   delete process.env[key];
 }

@@ -2,7 +2,11 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { queryBookings } from "@/lib/db";
-import { getContactFromEnv, getPricingFromEnv } from "@/lib/templates";
+import {
+  getContactFromEnv,
+  getPricingFromEnv,
+  requireEnv,
+} from "@/lib/env-app";
 import DashboardClient from "./DashboardClient";
 import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
 
@@ -19,11 +23,10 @@ export default async function DashboardPage() {
     page: 1,
     pageSize: PAGE_SIZE,
   });
-  const username = process.env.DASHBOARD_USERNAME || "admin";
   return (
     <DashboardClient
       initialData={initialData}
-      username={username}
+      username={requireEnv("DASHBOARD_USERNAME")}
       pricing={getPricingFromEnv()}
       contact={getContactFromEnv()}
     />

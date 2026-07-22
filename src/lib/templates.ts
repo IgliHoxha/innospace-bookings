@@ -1,6 +1,14 @@
 // Pure email-template helpers shared by the mailer and the dashboard preview,
-// so the preview matches what's actually sent.
-import type { Booking, BookingPlan, BookingStatus } from "./types";
+// so the preview matches what's actually sent. No env access (the caller passes
+// pricing + contact), so this module is safe to import from a client component.
+import { formatDateRangeLong } from "./datetime";
+import type {
+  Booking,
+  BookingPlan,
+  BookingStatus,
+  ContactInfo,
+  Pricing,
+} from "./types";
 
 export type EmailStatus = Extract<BookingStatus, "confirmed" | "cancelled">;
 
@@ -12,86 +20,37 @@ const PLAN_META: Record<BookingPlan, { label: string; period: string }> = {
   "event-room": { label: "Event Room", period: "booking" },
 };
 
-export type Pricing = {
-  currency: string;
-  plans: Partial<Record<BookingPlan, string>>;
-  // Event Room is billed by the hour (3h min) or by the day.
-  eventRoom?: { hour?: string; day?: string };
-};
-
-// Server-only: PRICE_* aren't exposed to the browser.
-export function getPricingFromEnv(): Pricing {
-  return {
-    currency: process.env.PRICE_CURRENCY || "€",
-    plans: {
-      "daily-pass": process.env.PRICE_DAILY_PASS,
-      "weekly-pass": process.env.PRICE_WEEKLY_PASS,
-      "monthly-pass": process.env.PRICE_MONTHLY_PASS,
-    },
-    eventRoom: {
-      hour: process.env.PRICE_EVENT_ROOM_HOUR,
-      day: process.env.PRICE_EVENT_ROOM_DAY,
-    },
-  };
-}
-
-// Real contact/access details live in env, not in this (public) source. Any
-// field left unset is simply omitted from the email footer.
-export type ContactInfo = {
-  name?: string; // who signs off the confirmation
-  org?: string;
-  address?: string;
-  accessApt1?: string;
-  accessApt2?: string;
-  mapsUrl?: string;
-  phone?: string;
-  email?: string;
-  nid?: string;
-};
-
-// Server-only: BUSINESS_* / EMAIL_SIGNOFF_NAME aren't exposed to the browser.
-export function getContactFromEnv(): ContactInfo {
-  return {
-    name: process.env.EMAIL_SIGNOFF_NAME,
-    org: process.env.BUSINESS_NAME,
-    address: process.env.BUSINESS_ADDRESS,
-    accessApt1: process.env.BUSINESS_ACCESS_APT1,
-    accessApt2: process.env.BUSINESS_ACCESS_APT2,
-    mapsUrl: process.env.BUSINESS_MAPS_URL,
-    phone: process.env.BUSINESS_PHONE,
-    email: process.env.BUSINESS_EMAIL,
-    nid: process.env.BUSINESS_NID,
-  };
-}
-
-// Sign-off + contact/access block for the confirmation email. Built from env, so
-// only the details actually configured appear.
-function signOff(contact?: ContactInfo): string[] {
-  const c = contact ?? {};
+// Sign-off + contact/access block for the confirmation email. Only the details
+// actually configured appear; the org name always closes it.
+function signOff(contact: ContactInfo): string[] {
   const lines: string[] = [];
-  if (c.name) lines.push(c.name);
-  lines.push("", c.org || "InnoSpace Tirana");
-  if (c.address) lines.push(c.address);
-  const access = [c.accessApt1, c.accessApt2].filter(Boolean) as string[];
+  if (contact.name) lines.push(contact.name);
+  lines.push("", contact.org);
+  if (contact.address) lines.push(contact.address);
+  const access = [contact.accessApt1, contact.accessApt2].filter(
+    (a): a is string => !!a,
+  );
   if (access.length) {
     lines.push("", "⚠️ Important access instructions:");
     for (const a of access) lines.push("", a);
   }
-  if (c.mapsUrl) lines.push("", `View on Google Maps: ${c.mapsUrl}`);
+  if (contact.mapsUrl)
+    lines.push("", `View on Google Maps: ${contact.mapsUrl}`);
   const rows: string[] = [];
-  if (c.phone) rows.push(`Phone: ${c.phone}`);
-  if (c.email) rows.push(`Email: ${c.email}`);
-  if (c.nid) rows.push(`NID: ${c.nid}`);
+  if (contact.phone) rows.push(`Phone: ${contact.phone}`);
+  if (contact.email) rows.push(`Email: ${contact.email}`);
+  if (contact.nid) rows.push(`NID: ${contact.nid}`);
   if (rows.length) lines.push("", ...rows);
   return lines;
 }
 
+/** The rate sentence for a booking's plan, or null when it isn't priced. */
 export function priceLineFor(
   booking: Booking,
-  pricing?: Pricing,
+  pricing: Pricing,
 ): string | null {
-  if (!pricing || !booking.plan) return null;
-  const cur = pricing.currency || "€";
+  if (!booking.plan) return null;
+  const cur = pricing.currency;
 
   if (booking.plan === "event-room") {
     const { hour, day } = pricing.eventRoom ?? {};
@@ -109,55 +68,6 @@ export function priceLineFor(
   return `The ${meta.label} rate is ${amount}${cur} per ${meta.period}.`;
 }
 
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
-const pad2 = (n: number) => String(n).padStart(2, "0");
-
-/** Compact DD/MM/YY for the dashboard table, e.g. "02/07/26". */
-export function formatDMYShort(value: string | undefined): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
-  return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : "";
-}
-
-/** Compact date range for the table: "30/06/26 → 02/07/26" (or a single date). */
-export function formatDateRangeShort(
-  from: string | undefined,
-  to: string | undefined,
-): string {
-  const f = formatDMYShort(from);
-  const t = formatDMYShort(to);
-  if (!f && !t) return "-";
-  if (!f) return t;
-  if (!t || f === t) return f;
-  return `${f} → ${t}`;
-}
-
-/**
- * Compact date + time for the table, e.g. "02/07/26 14:30".
- * Uses the local timezone, so call it client-side only (hydration-safe).
- */
-export function formatDateTime(iso: string): string {
-  const dt = new Date(iso);
-  if (Number.isNaN(dt.getTime())) return "";
-  const yy = String(dt.getFullYear()).slice(2);
-  return `${pad2(dt.getDate())}/${pad2(dt.getMonth() + 1)}/${yy} ${pad2(
-    dt.getHours(),
-  )}:${pad2(dt.getMinutes())}`;
-}
-
 function titleCase(s: string): string {
   return s
     .replace(/[-/]/g, " ")
@@ -171,24 +81,11 @@ export function bookingTypeLabel(booking: Booking): string {
   return PLAN_META[booking.plan]?.label ?? titleCase(booking.plan);
 }
 
-function parseYMD(v: string | undefined) {
-  if (!v) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
-  return m ? { y: m[1], m: parseInt(m[2], 10), d: parseInt(m[3], 10) } : null;
-}
-
+/** The booked dates as email copy, e.g. "1-3 July 2026". */
 export function datesText(booking: Booking): string {
-  const f = parseYMD(booking.from);
-  const t = parseYMD(booking.to);
-  if (!f) return "your requested dates";
-  if (t && (t.y !== f.y || t.m !== f.m || t.d !== f.d)) {
-    if (t.y === f.y && t.m === f.m)
-      return `${f.d}–${t.d} ${MONTHS[f.m - 1]} ${f.y}`;
-    if (t.y === f.y)
-      return `${f.d} ${MONTHS[f.m - 1]} – ${t.d} ${MONTHS[t.m - 1]} ${f.y}`;
-    return `${f.d} ${MONTHS[f.m - 1]} ${f.y} – ${t.d} ${MONTHS[t.m - 1]} ${t.y}`;
-  }
-  return `${f.d} ${MONTHS[f.m - 1]} ${f.y}`;
+  return (
+    formatDateRangeLong(booking.from, booking.to) ?? "your requested dates"
+  );
 }
 
 export function emailSubject(status: EmailStatus, booking?: Booking): string {
@@ -202,19 +99,20 @@ export function emailHeading(status: EmailStatus): string {
   return status === "confirmed" ? "Booking confirmed" : "Booking cancelled";
 }
 
+function firstName(booking: Booking): string {
+  return booking.fullName?.trim() ? booking.fullName.trim().split(" ")[0] : "";
+}
+
 function confirmedBody(
   booking: Booking,
-  pricing?: Pricing,
-  contact?: ContactInfo,
+  pricing: Pricing,
+  contact: ContactInfo,
 ): string {
-  const first = booking.fullName?.trim()
-    ? booking.fullName.trim().split(" ")[0]
-    : "there";
   const type = bookingTypeLabel(booking).toLowerCase();
   const dates = datesText(booking);
   const priceLine = priceLineFor(booking, pricing);
   const lines = [
-    `Hi ${first},`,
+    `Hi ${firstName(booking) || "there"},`,
     "",
     `Thank you for your message and your interest in our ${type}.`,
     "",
@@ -226,15 +124,12 @@ function confirmedBody(
   return lines.join("\n");
 }
 
-function cancelledBody(booking: Booking): string {
-  const first = booking.fullName?.trim()
-    ? booking.fullName.trim().split(" ")[0]
-    : "";
-  const greeting = first ? `Hello ${first},` : "Hello,";
+function cancelledBody(booking: Booking, contact: ContactInfo): string {
+  const first = firstName(booking);
   return [
-    greeting,
+    first ? `Hello ${first},` : "Hello,",
     "",
-    "Thank you for your request and your interest in InnoSpace Tirana.",
+    `Thank you for your request and your interest in ${contact.org}.`,
     "",
     "We are very sorry to inform you that, at the moment, we are fully booked and unfortunately unable to confirm your workspace reservation for the requested date.",
     "",
@@ -243,7 +138,7 @@ function cancelledBody(booking: Booking): string {
     "Thank you for your understanding.",
     "",
     "Best regards,",
-    "InnoSpace Tirana",
+    contact.org,
   ].join("\n");
 }
 
@@ -251,9 +146,9 @@ function cancelledBody(booking: Booking): string {
 export function emailBodyText(
   booking: Booking,
   status: EmailStatus,
-  pricing?: Pricing,
-  contact?: ContactInfo,
+  pricing: Pricing,
+  contact: ContactInfo,
 ): string {
   if (status === "confirmed") return confirmedBody(booking, pricing, contact);
-  return cancelledBody(booking);
+  return cancelledBody(booking, contact);
 }

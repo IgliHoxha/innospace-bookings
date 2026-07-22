@@ -1,5 +1,6 @@
 // Cookie auth: valid login mints an HMAC-signed token, verified on each request.
 import { createHmac, timingSafeEqual } from "crypto";
+import { requireEnv } from "./env-app";
 
 export const SESSION_COOKIE = "innospace_session";
 const PAYLOAD = "authenticated";
@@ -9,7 +10,7 @@ const PAYLOAD = "authenticated";
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 function secret(): string {
-  return process.env.AUTH_SECRET || "dev-insecure-secret-change-me";
+  return requireEnv("AUTH_SECRET");
 }
 
 function sign(payload: string): string {
@@ -50,8 +51,8 @@ function safeEqual(input: string, expected: string): boolean {
 // Verify dashboard credentials against the env-configured username/password.
 export function checkCredentials(username: string, password: string): boolean {
   if (!username || !password) return false;
-  const expectedUser = process.env.DASHBOARD_USERNAME || "admin";
-  const expectedPass = process.env.DASHBOARD_PASSWORD || "change-me";
+  const expectedUser = requireEnv("DASHBOARD_USERNAME");
+  const expectedPass = requireEnv("DASHBOARD_PASSWORD");
   // Evaluate both (no short-circuit) so timing doesn't reveal which failed.
   const userOk = safeEqual(username, expectedUser);
   const passOk = safeEqual(password, expectedPass);

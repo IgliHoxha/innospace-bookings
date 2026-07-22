@@ -17,6 +17,30 @@ beforeEach(async () => {
   db = await loadDb();
 });
 
+describe("schema migrations", () => {
+  it("stamps the DB's user_version once the schema is applied", async () => {
+    await db.createBooking(input()); // opens the connection, running migrations
+    const Database = (await import("better-sqlite3")).default;
+    const file = process.env.DATA_FILE as string;
+    const raw = new Database(file, { readonly: true });
+    try {
+      expect(raw.pragma("user_version", { simple: true })).toBe(
+        db.SCHEMA_VERSION,
+      );
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("is idempotent: re-opening an already migrated file is a no-op", async () => {
+    const b = await db.createBooking(input());
+    // A fresh module instance against the same file re-runs migrate().
+    vi.resetModules();
+    const again = await import("@/lib/db");
+    expect((await again.listBookings()).map((r) => r.id)).toEqual([b.id]);
+  });
+});
+
 describe("createBooking", () => {
   it("stamps a new website booking and returns it", async () => {
     const b = await db.createBooking(input());

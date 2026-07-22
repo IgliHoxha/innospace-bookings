@@ -1,7 +1,9 @@
 // In-memory brute-force guard for the dashboard login. The app runs as a single
 // long-lived Node process (one Fly machine), so a module-level Map is sufficient
-// — no external store needed. State resets on redeploy/restart, which is fine for
+// (no external store needed). State resets on redeploy/restart, which is fine for
 // login throttling. Keyed by client IP.
+
+import { requireIntEnv } from "./env-app";
 
 type Attempt = {
   fails: number; // consecutive failures in the current window
@@ -16,22 +18,25 @@ const attempts = new Map<string, Attempt>();
 // Forget idle records after this long so the Map can't grow unbounded.
 const IDLE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+function posIntEnv(name: string): number {
+  const n = requireIntEnv(name);
+  if (n <= 0) throw new Error(`${name} must be a positive integer.`);
+  return n;
+}
+
 /** Failures allowed before a lockout kicks in. */
 function maxAttempts(): number {
-  const n = Number(process.env.LOGIN_MAX_ATTEMPTS);
-  return Number.isInteger(n) && n > 0 ? n : 5;
+  return posIntEnv("LOGIN_MAX_ATTEMPTS");
 }
 
 /** Base lockout duration, in seconds. Escalates linearly per lockout. */
 function blockBaseSeconds(): number {
-  const n = Number(process.env.LOGIN_BLOCK_SECONDS);
-  return Number.isInteger(n) && n > 0 ? n : 60; // default: 1 minute
+  return posIntEnv("LOGIN_BLOCK_SECONDS");
 }
 
 /** Lockouts an IP may accrue before it is banned outright. */
 function maxLockouts(): number {
-  const n = Number(process.env.LOGIN_MAX_LOCKOUTS);
-  return Number.isInteger(n) && n > 0 ? n : 10;
+  return posIntEnv("LOGIN_MAX_LOCKOUTS");
 }
 
 function prune(now: number) {
@@ -94,7 +99,7 @@ export function registerFailure(key: string): RateStatus {
   };
   a.seen = now;
 
-  // Already banned — nothing more to escalate.
+  // Already banned: nothing more to escalate.
   if (a.banned) {
     attempts.set(key, a);
     return {
@@ -105,7 +110,7 @@ export function registerFailure(key: string): RateStatus {
     };
   }
 
-  // Already serving a lockout — extend nothing, just report the remaining time.
+  // Already serving a lockout: extend nothing, just report the remaining time.
   if (a.blockedUntil > now) {
     attempts.set(key, a);
     return {
@@ -121,7 +126,7 @@ export function registerFailure(key: string): RateStatus {
     a.lockouts += 1;
     a.fails = 0; // reset the window; the lockout is the penalty now
 
-    // Too many lockouts → ban this IP outright (until process restart / reset).
+    // Too many lockouts: ban this IP outright (until process restart / reset).
     if (a.lockouts > maxLockouts()) {
       a.banned = true;
       a.blockedUntil = Number.MAX_SAFE_INTEGER;
@@ -154,7 +159,7 @@ export function registerFailure(key: string): RateStatus {
   };
 }
 
-/** Successful login — clear the client's failure/lockout history. */
+/** Successful login: clear the client's failure/lockout history. */
 export function registerSuccess(key: string): void {
   attempts.delete(key);
 }
