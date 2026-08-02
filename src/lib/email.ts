@@ -88,16 +88,25 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// Plain-text body -> safe HTML: escape, keep line breaks, linkify URLs.
+// URLs and bare email addresses, matched in one pass so a URL carrying an "@"
+// is claimed by the URL branch rather than half-eaten by the address branch.
+// The address branch needs a word character after every dot, so trailing
+// sentence punctuation stays outside the link.
+const LINKABLE = /(https?:\/\/[^\s<]+)|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/g;
+
+// Plain-text body -> safe HTML: escape, keep line breaks, linkify URLs and email
+// addresses. Addresses must be linked here too: left bare, Gmail auto-links them
+// and paints them its own default blue, clashing with the brand-coloured URLs.
 function textToHtml(text: string): string {
   return text
     .split(/\n{2,}/)
     .map((para) => {
       const safe = escapeHtml(para)
         .replace(/\n/g, "<br/>")
-        .replace(
-          /(https?:\/\/[^\s<]+)/g,
-          `<a href="$1" style="color:${BRAND}">$1</a>`,
+        .replace(LINKABLE, (_m, url?: string, mail?: string) =>
+          url
+            ? `<a href="${url}" style="color:${BRAND}">${url}</a>`
+            : `<a href="mailto:${mail}" style="color:${BRAND}">${mail}</a>`,
         );
       return `<p style="margin:0 0 14px;color:${INK};font-size:14px;line-height:1.6">${safe}</p>`;
     })

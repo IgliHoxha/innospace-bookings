@@ -160,3 +160,50 @@ describe("sendCustomerStatusEmail", () => {
     warn.mockRestore();
   });
 });
+
+describe("linkified body", () => {
+  it("links a bare email address in the brand colour, not Gmail's blue", async () => {
+    await email.sendCustomerStatusEmail(
+      BOOKING,
+      "confirmed",
+      "Email: info@innospacetirana.com",
+    );
+    expect(htmlOf()).toContain(
+      '<a href="mailto:info@innospacetirana.com" style="color:#25bdad">info@innospacetirana.com</a>',
+    );
+  });
+
+  it("gives URLs and addresses the same colour", async () => {
+    await email.sendCustomerStatusEmail(
+      BOOKING,
+      "confirmed",
+      "See https://maps.google.com/?q=x or mail info@innospacetirana.com",
+    );
+    const html = htmlOf();
+    const colours = [
+      ...html.matchAll(/<a href="[^"]*" style="color:(#[0-9a-f]{6})"/g),
+    ].map((m) => m[1]);
+    expect(colours.length).toBe(2);
+    expect(new Set(colours).size).toBe(1);
+  });
+
+  it("leaves trailing sentence punctuation outside the link", async () => {
+    await email.sendCustomerStatusEmail(
+      BOOKING,
+      "confirmed",
+      "Write to info@innospacetirana.com.",
+    );
+    expect(htmlOf()).toContain(">info@innospacetirana.com</a>.");
+  });
+
+  it("treats a URL containing an @ as one URL, not a stray address", async () => {
+    await email.sendCustomerStatusEmail(
+      BOOKING,
+      "confirmed",
+      "Open https://example.com/p?e=a@b.com now",
+    );
+    const html = htmlOf();
+    expect(html).toContain('href="https://example.com/p?e=a@b.com"');
+    expect(html).not.toContain("mailto:");
+  });
+});
