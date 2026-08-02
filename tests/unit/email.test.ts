@@ -196,6 +196,39 @@ describe("linkified body", () => {
     expect(htmlOf()).toContain(">info@innospacetirana.com</a>.");
   });
 
+  it("links a phone number as tel: in the brand colour, not the client's blue", async () => {
+    await email.sendCustomerStatusEmail(
+      BOOKING,
+      "confirmed",
+      "Phone: +355 69 219 2666",
+    );
+    expect(htmlOf()).toContain(
+      '<a href="tel:+355692192666" style="color:#25bdad">+355 69 219 2666</a>',
+    );
+  });
+
+  it("leaves years, prices and street numbers alone", async () => {
+    await email.sendCustomerStatusEmail(
+      BOOKING,
+      "confirmed",
+      "15 EUR per day on 4 August 2026 at Nd 10, H 5, Apt 1",
+    );
+    expect(htmlOf()).not.toContain("tel:");
+  });
+
+  it("does not mistake the + separators in a maps URL for a phone number", async () => {
+    await email.sendCustomerStatusEmail(
+      BOOKING,
+      "confirmed",
+      "https://maps.google.com/?q=Rr.+Pjeter+Bogdani+Tirana",
+    );
+    const html = htmlOf();
+    expect(html).not.toContain("tel:");
+    expect(html).toContain(
+      'href="https://maps.google.com/?q=Rr.+Pjeter+Bogdani+Tirana"',
+    );
+  });
+
   it("treats a URL containing an @ as one URL, not a stray address", async () => {
     await email.sendCustomerStatusEmail(
       BOOKING,

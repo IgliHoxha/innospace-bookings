@@ -88,25 +88,37 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// URLs and bare email addresses, matched in one pass so a URL carrying an "@"
-// is claimed by the URL branch rather than half-eaten by the address branch.
-// The address branch needs a word character after every dot, so trailing
-// sentence punctuation stays outside the link.
-const LINKABLE = /(https?:\/\/[^\s<]+)|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/g;
+// URLs, bare email addresses and international phone numbers, matched in one pass
+// so the URL branch claims a URL carrying an "@" or a "+" rather than letting the
+// later branches half-eat it. The address branch needs a word character after
+// every dot and the phone branch must end on a digit, so trailing sentence
+// punctuation stays outside the link. Phones require a leading "+" so years,
+// prices and street numbers are never mistaken for one.
+const LINKABLE =
+  /(https?:\/\/[^\s<]+)|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)|(\+\d[\d\s().-]{7,}\d)/g;
 
-// Plain-text body -> safe HTML: escape, keep line breaks, linkify URLs and email
-// addresses. Addresses must be linked here too: left bare, Gmail auto-links them
-// and paints them its own default blue, clashing with the brand-coloured URLs.
+// Plain-text body -> safe HTML: escape, keep line breaks, linkify URLs, email
+// addresses and phone numbers. The last two must be linked here rather than left
+// bare: Gmail and iOS auto-link them and paint them their own default blue, which
+// clashes with the brand-coloured URLs alongside.
 function textToHtml(text: string): string {
   return text
     .split(/\n{2,}/)
     .map((para) => {
       const safe = escapeHtml(para)
         .replace(/\n/g, "<br/>")
-        .replace(LINKABLE, (_m, url?: string, mail?: string) =>
-          url
-            ? `<a href="${url}" style="color:${BRAND}">${url}</a>`
-            : `<a href="mailto:${mail}" style="color:${BRAND}">${mail}</a>`,
+        .replace(
+          LINKABLE,
+          (match, url?: string, mail?: string, phone?: string) => {
+            const link = (href: string, label: string) =>
+              `<a href="${href}" style="color:${BRAND}">${label}</a>`;
+            if (url) return link(url, url);
+            if (mail) return link(`mailto:${mail}`, mail);
+            // tel: wants digits only; the visible text keeps its spacing.
+            if (phone)
+              return link(`tel:${phone.replace(/[^\d+]/g, "")}`, phone);
+            return match;
+          },
         );
       return `<p style="margin:0 0 14px;color:${INK};font-size:14px;line-height:1.6">${safe}</p>`;
     })
