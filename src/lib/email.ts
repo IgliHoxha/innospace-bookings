@@ -15,7 +15,11 @@ import {
 } from "./templates";
 
 const BRAND = "#25bdad";
-const PLUM = "#524552";
+// Body copy is a neutral ink, not the brand plum. Clients that dark-mode invert
+// flip lightness but keep hue, so a plum-tinted grey comes back pink; a
+// zero-saturation grey comes back white. Saturated brand colours survive
+// inversion untouched, which is why BRAND and RED stay as they are.
+const INK = "#000000";
 const RED = "#b91c1c";
 
 // Logo is an app asset (public/logo.svg) served under APP_BASE_URL. In dev that's
@@ -69,7 +73,7 @@ function textToHtml(text: string): string {
           /(https?:\/\/[^\s<]+)/g,
           `<a href="$1" style="color:${BRAND}">$1</a>`,
         );
-      return `<p style="margin:0 0 14px;color:${PLUM};font-size:14px;line-height:1.6">${safe}</p>`;
+      return `<p style="margin:0 0 14px;color:${INK};font-size:14px;line-height:1.6">${safe}</p>`;
     })
     .join("");
 }

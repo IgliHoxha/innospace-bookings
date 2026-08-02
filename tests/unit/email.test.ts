@@ -25,9 +25,11 @@ const BOOKING: Booking = {
   createdAt: "2026-06-01T10:00:00.000Z",
 };
 
+const htmlOf = (call: number = 0) => send.mock.calls[call][0].html as string;
+
 async function sentHtml(): Promise<string> {
   await email.sendCustomerStatusEmail(BOOKING, "confirmed");
-  return send.mock.calls[0][0].html as string;
+  return htmlOf();
 }
 
 beforeEach(async () => {
@@ -65,13 +67,45 @@ describe("email logo", () => {
     expect(await sentHtml()).toContain('alt="Innospace Tirana"');
   });
 
-  // The asset the email links to must exist and carry the black wordmark the
-  // site uses; logo-white.svg is the white-background counterpart.
-  it("ships logo.svg with a black wordmark and logo-white.svg with a white one", () => {
-    const read = (name: string) =>
-      readFileSync(join(process.cwd(), "public", name), "utf8");
-    expect(read("logo.svg")).toContain(".cls-2{fill:#000;}");
-    expect(read("logo-white.svg")).toContain(".cls-2{fill:#fff;}");
+  // One asset serves both surfaces: black by default, white where the context is
+  // dark. That is what makes it legible after a mail client inverts the shell.
+  it("ships logo.svg with a black wordmark that flips white in a dark context", () => {
+    const svg = readFileSync(join(process.cwd(), "public", "logo.svg"), "utf8");
+    expect(svg).toContain(".cls-2{fill:#000;}");
+    expect(svg).toContain(
+      "@media (prefers-color-scheme:dark){.cls-2{fill:#fff;}}",
+    );
+  });
+
+  // The flip above is only safe on the site because the app pins itself light.
+  // Drop this and the header wordmark turns white on white for dark-mode users.
+  it("pins the site to a light colour scheme so the site wordmark stays black", () => {
+    const css = readFileSync(
+      join(process.cwd(), "src", "app", "globals.css"),
+      "utf8",
+    );
+    expect(css).toMatch(/color-scheme:\s*light/);
+  });
+});
+
+describe("body copy colour", () => {
+  // A mail client that dark-mode inverts keeps hue and flips lightness, so the
+  // old plum ink (#524552) came back pink instead of white. Neutral ink only.
+  it("inks paragraphs with a neutral black, never the brand plum", async () => {
+    const html = await sentHtml();
+    expect(html).toContain("color:#000000;font-size:14px");
+    expect(html).not.toContain("#524552");
+  });
+
+  it("keeps the saturated brand colour on links, which inverts cleanly", async () => {
+    await email.sendCustomerStatusEmail(
+      { ...BOOKING, fullName: "Ada" },
+      "confirmed",
+      "See https://example.com for details",
+    );
+    expect(htmlOf()).toContain(
+      '<a href="https://example.com" style="color:#25bdad"',
+    );
   });
 });
 
