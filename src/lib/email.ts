@@ -22,23 +22,31 @@ const BRAND = "#25bdad";
 const INK = "#000000";
 const RED = "#b91c1c";
 
-// Logo is an app asset (public/logo.svg) served under APP_BASE_URL. In dev that's
-// localhost (unfetchable by mail clients), but dev normally skips sending. The
-// wordmark is black, so it reads poorly where a client dark-mode-inverts the
-// shell; clients that refuse SVG outright fall back to the alt text.
-// Gmail re-serves images through its own proxy, keyed by source URL and cached
-// hard, so an edit to logo.svg alone never reaches a recipient who was already
-// sent the old one. Bump this whenever the artwork changes.
-const LOGO_VERSION = "2";
+// Email gets its own asset, not the site's logo.svg, because Gmail proxies every
+// image through googleusercontent and rasterises SVG to PNG on its own servers
+// (verified: the proxy responds content-type image/png). Any prefers-color-scheme
+// rule is therefore resolved in Google's light context and baked in flat, so the
+// site's adaptive wordmark would always arrive black. logo-email.svg instead
+// carries an opaque white panel behind the artwork: that is pixels, not CSS, so
+// it survives rasterisation and any dark-mode inversion the client applies.
+//
+// Served under APP_BASE_URL. In dev that's localhost (unfetchable by mail
+// clients), but dev normally skips sending.
+//
+// The proxy caches per source URL, so an edit to the file alone never reaches a
+// recipient already sent the old one. Bump this whenever the artwork changes.
+const LOGO_VERSION = "3";
 
 function emailLogoUrl(): string {
-  return `${appBaseUrl().replace(/\/$/, "")}/logo.svg?v=${LOGO_VERSION}`;
+  return `${appBaseUrl().replace(/\/$/, "")}/logo-email.svg?v=${LOGO_VERSION}`;
 }
 
-// The artwork is 1340x320, so a 30px-tall render is 126px wide. Mail clients that
-// ignore CSS need the width attribute or they reserve the full intrinsic size.
-const LOGO_HEIGHT = 30;
-const LOGO_WIDTH = 126;
+// logo-email.svg is 1460x440 (artwork plus panel), so a 40px-tall render is 133px
+// wide and leaves the wordmark itself at the same ~29px it has always been. Mail
+// clients that ignore CSS need the width attribute or they reserve the full
+// intrinsic size.
+const LOGO_HEIGHT = 40;
+const LOGO_WIDTH = 133;
 
 // Lazy singleton: one Resend client for the process, built on first send (not at
 // import, so tests/dev with no key never construct it). RESEND_API_KEY is an
