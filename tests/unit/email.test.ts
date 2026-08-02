@@ -45,14 +45,14 @@ afterEach(() => {
 describe("email logo", () => {
   it("points at logo.svg on the default app base URL", async () => {
     expect(await sentHtml()).toContain(
-      '<img src="https://booking.innospacetirana.com/logo.svg"',
+      '<img src="https://booking.innospacetirana.com/logo.svg?v=2"',
     );
   });
 
   it("uses APP_BASE_URL when set, without doubling the slash", async () => {
     vi.stubEnv("APP_BASE_URL", "https://staging.example.com/");
     expect(await sentHtml()).toContain(
-      'src="https://staging.example.com/logo.svg"',
+      'src="https://staging.example.com/logo.svg?v=2"',
     );
   });
 

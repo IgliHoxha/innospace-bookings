@@ -26,8 +26,13 @@ const RED = "#b91c1c";
 // localhost (unfetchable by mail clients), but dev normally skips sending. The
 // wordmark is black, so it reads poorly where a client dark-mode-inverts the
 // shell; clients that refuse SVG outright fall back to the alt text.
+// Gmail re-serves images through its own proxy, keyed by source URL and cached
+// hard, so an edit to logo.svg alone never reaches a recipient who was already
+// sent the old one. Bump this whenever the artwork changes.
+const LOGO_VERSION = "2";
+
 function emailLogoUrl(): string {
-  return `${appBaseUrl().replace(/\/$/, "")}/logo.svg`;
+  return `${appBaseUrl().replace(/\/$/, "")}/logo.svg?v=${LOGO_VERSION}`;
 }
 
 // The artwork is 1340x320, so a 30px-tall render is 126px wide. Mail clients that
