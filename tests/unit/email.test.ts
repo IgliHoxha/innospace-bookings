@@ -84,6 +84,15 @@ describe("email logo", () => {
 
   // The point of the whole exercise: the wordmark is HTML text inked neutral, so
   // a dark-mode client inverts it to white exactly as it does the body copy.
+  // A <table> here made Gmail cut the bordered card container in two, rendering
+  // the header as a detached box above a "show trimmed content" expander. Keep
+  // the header markup flat: inline spans only.
+  it("builds the header without a table, so the card is not split", async () => {
+    const html = await sentHtml();
+    expect(html).not.toContain("<table");
+    expect(html).toContain("display:inline-block;vertical-align:middle");
+  });
+
   it("renders the wordmark as HTML text in neutral ink, not as artwork", async () => {
     const html = await sentHtml();
     expect(html).toContain('<span style="font-weight:700">inno</span>');

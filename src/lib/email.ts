@@ -52,16 +52,13 @@ const FONT_STACK =
 
 // The wordmark text is the brand lockup, not the configurable BUSINESS_NAME, for
 // the same reason the mark is fixed artwork: both are the logo.
+//
+// Built from inline spans rather than a table or nested divs. Gmail cut the card
+// container in two at the table version of this, and the header sits inside a
+// bordered, rounded wrapper that renders badly when split, so keep the markup
+// here as flat as the plain <img> it replaced.
 function logoLockup(org: string): string {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0">
-          <tr>
-            <td style="vertical-align:middle;padding-right:11px"><img src="${emailLogoUrl()}" alt="${org}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;display:block" /></td>
-            <td style="vertical-align:middle;font-family:${FONT_STACK}">
-              <div style="font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></div>
-              <div style="font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</div>
-            </td>
-          </tr>
-        </table>`;
+  return `<img src="${emailLogoUrl()}" alt="${org}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;vertical-align:middle;border:0" /><span style="display:inline-block;vertical-align:middle;padding-left:11px;font-family:${FONT_STACK}"><span style="display:block;font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></span><span style="display:block;font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</span></span>`;
 }
 
 // Lazy singleton: one Resend client for the process, built on first send (not at
