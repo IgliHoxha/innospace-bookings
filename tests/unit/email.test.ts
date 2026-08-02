@@ -46,7 +46,7 @@ describe("email logo", () => {
   it("points at the versioned email asset, not the site logo", async () => {
     const html = await sentHtml();
     expect(html).toContain(
-      '<img src="https://booking.innospacetirana.com/logo-email.svg?v=5"',
+      '<img src="https://booking.innospacetirana.com/logo-mark.svg?v=6"',
     );
     // Gmail caches per source URL, so the version must survive any edit here.
     expect(html).not.toContain('/logo.svg"');
@@ -55,14 +55,14 @@ describe("email logo", () => {
   it("uses APP_BASE_URL when set, without doubling the slash", async () => {
     vi.stubEnv("APP_BASE_URL", "https://staging.example.com/");
     expect(await sentHtml()).toContain(
-      'src="https://staging.example.com/logo-email.svg?v=5"',
+      'src="https://staging.example.com/logo-mark.svg?v=6"',
     );
   });
 
   it("carries width/height attributes so CSS-stripping clients size it", async () => {
     const html = await sentHtml();
-    expect(html).toContain('width="133" height="40"');
-    expect(html).toContain("height:40px;width:133px");
+    expect(html).toContain('width="34" height="32"');
+    expect(html).toContain("width:34px;height:32px");
   });
 
   it("falls back to the org name as alt text where the image is blocked", async () => {
@@ -70,20 +70,26 @@ describe("email logo", () => {
     expect(await sentHtml()).toContain('alt="Innospace Tirana"');
   });
 
-  // Gmail rasterises SVG to PNG on its own servers, so a prefers-color-scheme
-  // rule resolves in Google's light context and arrives baked flat. The email
-  // asset therefore carries its own contrast as artwork: an opaque ink panel,
-  // which is pixels no client-side inversion can touch.
-  it("ships the email asset on an opaque ink panel, no media query", () => {
+  // Gmail can recolour HTML but never the inside of an image, so the mark is the
+  // only part shipped as artwork: teal, which reads on either background.
+  it("ships a teal-only mark asset with no wordmark and no media query", () => {
     const svg = readFileSync(
-      join(process.cwd(), "public", "logo-email.svg"),
+      join(process.cwd(), "public", "logo-mark.svg"),
       "utf8",
     );
-    expect(svg).toContain(".bg{fill:#2b2431;}");
-    expect(svg).toContain('<rect class="bg"');
+    expect(svg).toContain(".cls-1{fill:#25bdad;}");
+    expect(svg).not.toContain("cls-2");
     expect(svg).not.toContain("prefers-color-scheme");
-    // A dark panel demands a white wordmark, or it would be black on near-black.
-    expect(svg).toContain(".cls-2{fill:#ffffff;}");
+  });
+
+  // The point of the whole exercise: the wordmark is HTML text inked neutral, so
+  // a dark-mode client inverts it to white exactly as it does the body copy.
+  it("renders the wordmark as HTML text in neutral ink, not as artwork", async () => {
+    const html = await sentHtml();
+    expect(html).toContain('<span style="font-weight:700">inno</span>');
+    expect(html).toContain('<span style="font-weight:400">space</span>');
+    expect(html).toContain("color:#000000");
+    expect(html).toContain(">TIRANA<");
   });
 
   // The site asset stays tight and transparent: no panel, no adaptive rule.

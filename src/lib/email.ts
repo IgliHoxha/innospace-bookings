@@ -22,35 +22,47 @@ const BRAND = "#25bdad";
 const INK = "#000000";
 const RED = "#b91c1c";
 
-// Email gets its own asset, not the site's logo.svg, because Gmail proxies every
-// image through googleusercontent and rasterises SVG to PNG on its own servers
-// (verified: the proxy responds content-type image/png). One flat bitmap is all
-// a recipient ever sees, so it has to read on a white card and on a dark-mode
-// shell alike, and no CSS in the file can adapt it: prefers-color-scheme is
-// resolved in Google's light context and baked in.
+// Gmail proxies every image through googleusercontent and rasterises SVG to PNG
+// on its own servers (verified: the proxy responds content-type image/png). It
+// can recolour HTML for dark mode but never the inside of an image, so a wordmark
+// shipped as artwork is stuck on one fixed colour and loses either light or dark.
 //
-// Hence the contrast is baked in: the artwork sits on an opaque ink panel with a
-// white wordmark. Pixels, not CSS, so rasterisation preserves it. In a light
-// client it reads as a deliberate branded block; in dark mode the panel nearly
-// merges with the shell, leaving just the wordmark.
+// So only the teal mark stays an image (teal reads on both backgrounds) and the
+// wordmark is HTML text: a dark-mode client then inverts it exactly as it does
+// the body copy, black on a white card and white on a dark shell.
 //
 // Served under APP_BASE_URL. In dev that's localhost (unfetchable by mail
 // clients), but dev normally skips sending.
 //
 // The proxy caches per source URL, so an edit to the file alone never reaches a
 // recipient already sent the old one. Bump this whenever the artwork changes.
-const LOGO_VERSION = "5";
+const LOGO_VERSION = "6";
 
 function emailLogoUrl(): string {
-  return `${appBaseUrl().replace(/\/$/, "")}/logo-email.svg?v=${LOGO_VERSION}`;
+  return `${appBaseUrl().replace(/\/$/, "")}/logo-mark.svg?v=${LOGO_VERSION}`;
 }
 
-// logo-email.svg is 1460x440 (artwork plus panel), so a 40px-tall render is 133px
-// wide and leaves the wordmark itself at the same ~29px it has always been. Mail
-// clients that ignore CSS need the width attribute or they reserve the full
-// intrinsic size.
-const LOGO_HEIGHT = 40;
-const LOGO_WIDTH = 133;
+// logo-mark.svg is 329x308, so a 32px-tall render is 34px wide. Mail clients that
+// ignore CSS need the width attribute or they reserve the full intrinsic size.
+const MARK_HEIGHT = 32;
+const MARK_WIDTH = 34;
+
+const FONT_STACK =
+  "'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif" as const;
+
+// The wordmark text is the brand lockup, not the configurable BUSINESS_NAME, for
+// the same reason the mark is fixed artwork: both are the logo.
+function logoLockup(org: string): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="vertical-align:middle;padding-right:11px"><img src="${emailLogoUrl()}" alt="${org}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;display:block" /></td>
+            <td style="vertical-align:middle;font-family:${FONT_STACK}">
+              <div style="font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></div>
+              <div style="font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</div>
+            </td>
+          </tr>
+        </table>`;
+}
 
 // Lazy singleton: one Resend client for the process, built on first send (not at
 // import, so tests/dev with no key never construct it). RESEND_API_KEY is an
@@ -105,10 +117,10 @@ function shell(opts: {
   // Footer website link; visible text drops the scheme and any trailing slash.
   const website = contact.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
   return `
-  <div style="background:#f4f6f8;padding:28px 12px;font-family:'IBM Plex Sans',system-ui,Segoe UI,Arial,sans-serif">
+  <div style="background:#f4f6f8;padding:28px 12px;font-family:${FONT_STACK}">
     <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb">
       <div style="padding:22px 28px;border-bottom:1px solid #eee">
-        <img src="${emailLogoUrl()}" alt="${contact.org}" width="${LOGO_WIDTH}" height="${LOGO_HEIGHT}" style="height:${LOGO_HEIGHT}px;width:${LOGO_WIDTH}px;display:block" />
+        ${logoLockup(contact.org)}
       </div>
       <div style="height:4px;background:${accent}"></div>
       <div style="padding:28px">
