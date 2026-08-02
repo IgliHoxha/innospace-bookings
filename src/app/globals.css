@@ -96,7 +96,8 @@ a {
   display: block;
 }
 .brand-sub {
-  color: var(--text);
+  /* Black to match the blackened wordmark in logo.svg. */
+  color: #000;
   font-weight: 600;
   font-size: 15px;
   padding-left: 10px;
