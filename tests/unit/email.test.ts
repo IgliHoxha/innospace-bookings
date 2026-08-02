@@ -46,7 +46,7 @@ describe("email logo", () => {
   it("points at the versioned email asset, not the site logo", async () => {
     const html = await sentHtml();
     expect(html).toContain(
-      '<img src="https://booking.innospacetirana.com/logo-email.svg?v=4"',
+      '<img src="https://booking.innospacetirana.com/logo-email.svg?v=5"',
     );
     // Gmail caches per source URL, so the version must survive any edit here.
     expect(html).not.toContain('/logo.svg"');
@@ -55,14 +55,14 @@ describe("email logo", () => {
   it("uses APP_BASE_URL when set, without doubling the slash", async () => {
     vi.stubEnv("APP_BASE_URL", "https://staging.example.com/");
     expect(await sentHtml()).toContain(
-      'src="https://staging.example.com/logo-email.svg?v=4"',
+      'src="https://staging.example.com/logo-email.svg?v=5"',
     );
   });
 
   it("carries width/height attributes so CSS-stripping clients size it", async () => {
     const html = await sentHtml();
-    expect(html).toContain('width="126" height="30"');
-    expect(html).toContain("height:30px;width:126px");
+    expect(html).toContain('width="133" height="40"');
+    expect(html).toContain("height:40px;width:133px");
   });
 
   it("falls back to the org name as alt text where the image is blocked", async () => {
@@ -72,17 +72,18 @@ describe("email logo", () => {
 
   // Gmail rasterises SVG to PNG on its own servers, so a prefers-color-scheme
   // rule resolves in Google's light context and arrives baked flat. The email
-  // asset therefore cannot adapt at all: one bitmap has to read on both.
-  it("inks the email asset entirely in brand teal, with no panel", () => {
+  // asset therefore carries its own contrast as artwork: an opaque ink panel,
+  // which is pixels no client-side inversion can touch.
+  it("ships the email asset on an opaque ink panel, no media query", () => {
     const svg = readFileSync(
       join(process.cwd(), "public", "logo-email.svg"),
       "utf8",
     );
-    // Teal is the one colour legible on a white card and a dark shell alike, so
-    // the wordmark joins the mark rather than relying on CSS Gmail strips.
-    expect(svg).toContain(".cls-2{fill:#25bdad;}");
+    expect(svg).toContain(".bg{fill:#2b2431;}");
+    expect(svg).toContain('<rect class="bg"');
     expect(svg).not.toContain("prefers-color-scheme");
-    expect(svg).not.toContain('class="bg"');
+    // A dark panel demands a white wordmark, or it would be black on near-black.
+    expect(svg).toContain(".cls-2{fill:#ffffff;}");
   });
 
   // The site asset stays tight and transparent: no panel, no adaptive rule.

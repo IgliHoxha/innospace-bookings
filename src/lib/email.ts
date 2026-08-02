@@ -29,25 +29,28 @@ const RED = "#b91c1c";
 // shell alike, and no CSS in the file can adapt it: prefers-color-scheme is
 // resolved in Google's light context and baked in.
 //
-// Hence the whole wordmark is brand teal here rather than the site's black: teal
-// is the one colour with usable contrast against both backgrounds. Same geometry
-// as logo.svg, transparent, no panel.
+// Hence the contrast is baked in: the artwork sits on an opaque ink panel with a
+// white wordmark. Pixels, not CSS, so rasterisation preserves it. In a light
+// client it reads as a deliberate branded block; in dark mode the panel nearly
+// merges with the shell, leaving just the wordmark.
 //
 // Served under APP_BASE_URL. In dev that's localhost (unfetchable by mail
 // clients), but dev normally skips sending.
 //
 // The proxy caches per source URL, so an edit to the file alone never reaches a
 // recipient already sent the old one. Bump this whenever the artwork changes.
-const LOGO_VERSION = "4";
+const LOGO_VERSION = "5";
 
 function emailLogoUrl(): string {
   return `${appBaseUrl().replace(/\/$/, "")}/logo-email.svg?v=${LOGO_VERSION}`;
 }
 
-// The artwork is 1340x320, so a 30px-tall render is 126px wide. Mail clients that
-// ignore CSS need the width attribute or they reserve the full intrinsic size.
-const LOGO_HEIGHT = 30;
-const LOGO_WIDTH = 126;
+// logo-email.svg is 1460x440 (artwork plus panel), so a 40px-tall render is 133px
+// wide and leaves the wordmark itself at the same ~29px it has always been. Mail
+// clients that ignore CSS need the width attribute or they reserve the full
+// intrinsic size.
+const LOGO_HEIGHT = 40;
+const LOGO_WIDTH = 133;
 
 // Lazy singleton: one Resend client for the process, built on first send (not at
 // import, so tests/dev with no key never construct it). RESEND_API_KEY is an
