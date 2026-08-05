@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Booking } from "@/lib/types";
+import { emailPreheader } from "@/lib/templates";
+import { getContactFromEnv } from "@/lib/env-app";
 
 // Resend is stubbed at the class level so no request ever leaves the process;
 // `send` is shared across instances so the lazy singleton is still observable.
@@ -276,7 +278,28 @@ describe("the preheader", () => {
   // Without the filler the client runs out of preheader and reads on into the
   // logo, showing the wordmark anyway.
   it("pads past the length a snippet reads", async () => {
-    expect(await sentHtml()).toContain("&#8199;&#65279;&#847;".repeat(30));
+    expect(await sentHtml()).toContain("&#847;&#65279;".repeat(60));
+  });
+
+  // The usual recipe pads with U+2007 FIGURE SPACE, a real space: Gmail drew
+  // thirty of them as a thirty-space hole in the notification.
+  it("pads with zero-width characters only, so it leaves no visible gap", async () => {
+    const hidden =
+      /<div style="display:none;[^"]*">([\s\S]*?)<\/div>/.exec(
+        await sentHtml(),
+      )?.[1] ?? "";
+    expect(hidden).not.toContain("&#8199;");
+    expect(hidden).not.toContain("&nbsp;");
+    expect(hidden).not.toMatch(/\u2007|\u00a0/);
+  });
+
+  // The pad may count for nothing, so the copy has to fill the snippet alone.
+  it("is long enough to fill a snippet without leaning on the pad", async () => {
+    const text = emailPreheader(BOOKING, "confirmed", getContactFromEnv());
+    expect(text.length).toBeGreaterThan(140);
+    expect(
+      emailPreheader(BOOKING, "cancelled", getContactFromEnv()).length,
+    ).toBeGreaterThan(140);
   });
 
   it("describes a cancellation as cancelled, since its subject only says 'Update'", async () => {

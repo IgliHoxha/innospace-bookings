@@ -111,9 +111,11 @@ export function emailPreheader(
   contact: ContactInfo,
 ): string {
   const what = `${bookingTypeLabel(booking)} for ${datesText(booking)} at ${contact.org}.`;
+  // Long enough to fill the snippet by itself: padding cannot be relied on, and
+  // whatever the snippet has room for after this is scraped from the body.
   return status === "cancelled"
-    ? `Cancelled: ${what} We hope to welcome you another time.`
-    : `Confirmed: ${what} The details are inside.`;
+    ? `Cancelled: ${what} We were not able to confirm these dates, and we would gladly look at another time whenever suits you.`
+    : `Confirmed: ${what} Everything we have for your visit is below, and you can reply to this email if anything needs changing.`;
 }
 
 function firstName(booking: Booking): string {

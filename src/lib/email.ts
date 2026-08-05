@@ -126,10 +126,15 @@ function textToHtml(text: string): string {
     .join("");
 }
 
-// Filler after the preheader text, invisible in every client: without it a client
-// that runs out of preheader keeps scraping the body and reads on into the
-// wordmark spans, which is the snippet the preheader exists to replace.
-const PREHEADER_PAD = "&#8199;&#65279;&#847;".repeat(30);
+// Filler after the preheader text, for a client that would otherwise keep
+// scraping the body and read on into the wordmark spans.
+//
+// Zero-width characters ONLY. The usual recipe for this pads with U+2007 FIGURE
+// SPACE, which is a real space: Gmail rendered thirty of them as a thirty-space
+// hole in the notification, between the preheader and the wordmark it failed to
+// hide. A client that ignores these contributes nothing, which is why the
+// preheader copy itself has to be long enough to fill the snippet on its own.
+const PREHEADER_PAD = "&#847;&#65279;".repeat(60);
 
 // The snippet a notification shows under the subject line. Hidden every way a
 // mail client might respect, since only the snippet reader is meant to see it:
