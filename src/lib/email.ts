@@ -10,6 +10,7 @@ import type { Booking, ContactInfo } from "./types";
 import {
   emailBodyText,
   emailHeading,
+  emailPreheader,
   emailSubject,
   type EmailStatus,
 } from "./templates";
@@ -58,7 +59,7 @@ const FONT_STACK =
 // bordered, rounded wrapper that renders badly when split, so keep the markup
 // here as flat as the plain <img> it replaced.
 function logoLockup(org: string): string {
-  return `<img src="${emailLogoUrl()}" alt="${org}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;vertical-align:middle;border:0" /><span style="display:inline-block;vertical-align:middle;padding-left:11px;font-family:${FONT_STACK}"><span style="display:block;font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></span><span style="display:block;font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</span></span>`;
+  return `<img src="${escapeHtml(emailLogoUrl())}" alt="${escapeHtml(org)}" width="${MARK_WIDTH}" height="${MARK_HEIGHT}" style="width:${MARK_WIDTH}px;height:${MARK_HEIGHT}px;vertical-align:middle;border:0" /><span style="display:inline-block;vertical-align:middle;padding-left:11px;font-family:${FONT_STACK}"><span style="display:block;font-size:23px;line-height:1;letter-spacing:-0.3px;color:${INK}"><span style="font-weight:700">inno</span><span style="font-weight:400">space</span></span><span style="display:block;font-size:9px;line-height:1;letter-spacing:2.1px;padding-top:4px;color:${BRAND}">TIRANA</span></span>`;
 }
 
 // Lazy singleton: one Resend client for the process, built on first send (not at
@@ -125,28 +126,48 @@ function textToHtml(text: string): string {
     .join("");
 }
 
+// Filler after the preheader text, invisible in every client: without it a client
+// that runs out of preheader keeps scraping the body and reads on into the
+// wordmark spans, which is the snippet the preheader exists to replace.
+const PREHEADER_PAD = "&#8199;&#65279;&#847;".repeat(30);
+
+// The snippet a notification shows under the subject line. Hidden every way a
+// mail client might respect, since only the snippet reader is meant to see it:
+// Gmail honours display:none, others need the zeroed box, Outlook needs mso-hide.
+function preheaderHtml(text: string): string {
+  return `<div style="display:none;font-size:0;line-height:0;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all">${escapeHtml(text)}${PREHEADER_PAD}</div>`;
+}
+
 function shell(opts: {
   accent: string;
   heading: string;
   bodyHtml: string;
   contact: ContactInfo;
+  preheader: string;
 }): string {
-  const { accent, heading, bodyHtml, contact } = opts;
+  const { accent, heading, bodyHtml, contact, preheader } = opts;
   // Footer website link; visible text drops the scheme and any trailing slash.
   const website = contact.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  // The header carries no border of its own: the accent rule directly below it
+  // already closes it off, and two lines a pixel apart read as one furred edge
+  // rather than as a deliberate divider.
+  //
+  // The rule zeroes its type as well as its height. An empty div still gets a
+  // line box, and the client's own line-height then fattens what should be 2px.
   return `
+  ${preheaderHtml(preheader)}
   <div style="background:#f4f6f8;padding:28px 12px;font-family:${FONT_STACK}">
     <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb">
-      <div style="padding:22px 28px;border-bottom:1px solid #eee">
+      <div style="padding:22px 28px">
         ${logoLockup(contact.org)}
       </div>
-      <div style="height:4px;background:${accent}"></div>
+      <div style="height:2px;line-height:2px;font-size:0;background:${accent}">&nbsp;</div>
       <div style="padding:28px">
         <h1 style="margin:0 0 16px;color:${accent};font-size:22px">${heading}</h1>
         ${bodyHtml}
       </div>
       <div style="padding:16px 28px;background:#fafafa;border-top:1px solid #eee;color:#a59ba5;font-size:12px">
-        ${contact.org} · <a href="${contact.url}" style="color:${BRAND};text-decoration:none">${website}</a>
+        ${escapeHtml(contact.org)} · <a href="${escapeHtml(contact.url)}" style="color:${BRAND};text-decoration:none">${escapeHtml(website)}</a>
       </div>
     </div>
   </div>`;
@@ -179,6 +200,10 @@ export async function sendCustomerStatusEmail(
       heading: emailHeading(status),
       bodyHtml: textToHtml(body),
       contact,
+      // Built from the booking, never from `body`: an admin editing the copy in
+      // the dashboard could otherwise open with anything, and the snippet is the
+      // one line a recipient reads before deciding to open at all.
+      preheader: emailPreheader(booking, status, contact),
     }),
   });
 }

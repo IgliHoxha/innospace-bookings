@@ -99,6 +99,23 @@ export function emailHeading(status: EmailStatus): string {
   return status === "confirmed" ? "Booking confirmed" : "Booking cancelled";
 }
 
+/**
+ * The snippet a notification shows beneath the subject. Without one the client
+ * scrapes the first text in the body, which is the wordmark, and shows the two
+ * spans run together as "innospaceTIRANA". It names the org in prose so the
+ * preview says something a recipient can act on.
+ */
+export function emailPreheader(
+  booking: Booking,
+  status: EmailStatus,
+  contact: ContactInfo,
+): string {
+  const what = `${bookingTypeLabel(booking)} for ${datesText(booking)} at ${contact.org}.`;
+  return status === "cancelled"
+    ? `Cancelled: ${what} We hope to welcome you another time.`
+    : `Confirmed: ${what} The details are inside.`;
+}
+
 function firstName(booking: Booking): string {
   return booking.fullName?.trim() ? booking.fullName.trim().split(" ")[0] : "";
 }

@@ -240,3 +240,144 @@ describe("linkified body", () => {
     expect(html).not.toContain("mailto:");
   });
 });
+
+// Gmail builds its snippet from the first text in the body, which used to be the
+// wordmark spans and showed up in the inbox as "innospaceTIRANA".
+describe("the preheader", () => {
+  it("comes before the logo lockup, or the client scrapes the wordmark instead", async () => {
+    const html = await sentHtml();
+    expect(html.indexOf("Confirmed:")).toBeGreaterThan(-1);
+    expect(html.indexOf("Confirmed:")).toBeLessThan(html.indexOf(">inno<"));
+  });
+
+  it("names the booking and the organisation", async () => {
+    expect(await sentHtml()).toContain(
+      "Confirmed: Day Pass for 1 July 2026 at Test Org.",
+    );
+  });
+
+  it("is hidden every way a client might respect", async () => {
+    const div =
+      /<div style="display:none;[^"]*">/.exec(await sentHtml())?.[0] ?? "";
+    for (const rule of [
+      "display:none",
+      "font-size:0",
+      "line-height:0",
+      "max-height:0",
+      "max-width:0",
+      "opacity:0",
+      "overflow:hidden",
+      "mso-hide:all",
+    ]) {
+      expect(div).toContain(rule);
+    }
+  });
+
+  // Without the filler the client runs out of preheader and reads on into the
+  // logo, showing the wordmark anyway.
+  it("pads past the length a snippet reads", async () => {
+    expect(await sentHtml()).toContain("&#8199;&#65279;&#847;".repeat(30));
+  });
+
+  it("describes a cancellation as cancelled, since its subject only says 'Update'", async () => {
+    await email.sendCustomerStatusEmail(BOOKING, "cancelled");
+    expect(htmlOf()).toContain("Cancelled: Day Pass for 1 July 2026");
+  });
+
+  // An admin can rewrite the body from the dashboard, so the snippet cannot be
+  // taken from it: it would otherwise open with whatever they typed.
+  it("ignores a custom body and keeps describing the booking", async () => {
+    await email.sendCustomerStatusEmail(
+      BOOKING,
+      "confirmed",
+      "<script>x</script> hi",
+    );
+    expect(htmlOf()).toContain("Confirmed: Day Pass");
+  });
+
+  // The org is env copy, so an angle bracket in it would close the hidden div
+  // early and spill the rest of the preheader into the visible email.
+  it("escapes the text it is given, so no markup can break out of the hidden div", async () => {
+    vi.stubEnv("BUSINESS_NAME", "</div><b>Sale!</b>");
+    const hidden =
+      /<div style="display:none;[^"]*">([\s\S]*?)<\/div>/.exec(
+        await sentHtml(),
+      )?.[1] ?? "";
+    expect(hidden).toContain("&lt;/div&gt;&lt;b&gt;Sale!&lt;/b&gt;");
+    expect(hidden).not.toContain("<b>");
+  });
+});
+
+// Env copy reaches the HTML verbatim, so a legitimate "&" or "<" in a business
+// name must not become markup, and a quote must not break out of an attribute.
+describe("escaping the env-supplied copy", () => {
+  it("escapes the org in the footer and in the logo's alt text", async () => {
+    vi.stubEnv("BUSINESS_NAME", 'Smith & Sons <"Tirana">');
+    const html = await sentHtml();
+    expect(html).toContain('alt="Smith &amp; Sons &lt;&quot;Tirana&quot;&gt;"');
+    expect(html).toContain("Smith &amp; Sons &lt;&quot;Tirana&quot;&gt; · <a");
+    expect(html).not.toContain("Smith & Sons");
+  });
+
+  // A quote in the URL would end the href and let the rest become attributes.
+  it("escapes the website URL in both the href and the visible text", async () => {
+    vi.stubEnv(
+      "BUSINESS_WEBSITE_URL",
+      'https://x.test/?a=1&b=2"onclick="evil()',
+    );
+    const html = await sentHtml();
+    expect(html).toContain(
+      'href="https://x.test/?a=1&amp;b=2&quot;onclick=&quot;evil()"',
+    );
+    expect(html).not.toContain('"onclick="evil()');
+  });
+
+  it("escapes the logo src, which carries the base URL from env", async () => {
+    vi.stubEnv("APP_BASE_URL", 'https://x.test/"onerror="evil()');
+    const html = await sentHtml();
+    expect(html).toContain("&quot;onerror=&quot;evil()/logo-mark.svg");
+    expect(html).not.toContain('"onerror="evil()');
+  });
+
+  it("leaves ordinary copy untouched", async () => {
+    vi.stubEnv("BUSINESS_NAME", "Innospace Tirana");
+    const html = await sentHtml();
+    expect(html).toContain('alt="Innospace Tirana"');
+    expect(html).not.toContain("&amp;");
+  });
+});
+
+describe("the accent rule under the header", () => {
+  it("is a 2px band in the status colour", async () => {
+    expect(await sentHtml()).toContain(
+      'style="height:2px;line-height:2px;font-size:0;background:#25bdad"',
+    );
+  });
+
+  // An empty div still gets a line box, so a client's own line-height would
+  // thicken what is meant to be a 2px hairline.
+  it("pins its line-height and font-size so no client can fatten it", async () => {
+    const rule =
+      /<div style="height:2px;[^"]*">.*?<\/div>/.exec(await sentHtml())?.[0] ??
+      "";
+    expect(rule).toContain("line-height:2px");
+    expect(rule).toContain("font-size:0");
+    // Outlook drops a truly empty box, so the rule carries a space it cannot see.
+    expect(rule).toContain("&nbsp;");
+  });
+
+  it("takes the colour of the status, so a cancellation reads red", async () => {
+    await email.sendCustomerStatusEmail(BOOKING, "cancelled");
+    expect(htmlOf()).toContain(
+      "height:2px;line-height:2px;font-size:0;background:#b91c1c",
+    );
+  });
+
+  // Two stacked lines a pixel apart read as one furred edge, and at 2px the grey
+  // one shows through rather than sitting behind.
+  it("is the only thing closing the header, which carries no border of its own", async () => {
+    const html = await sentHtml();
+    expect(html).toContain('<div style="padding:22px 28px">');
+    expect(html).not.toContain("padding:22px 28px;border-bottom");
+  });
+});
