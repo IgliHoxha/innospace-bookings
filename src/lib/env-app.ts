@@ -73,5 +73,6 @@ export function getContactFromEnv(): ContactInfo {
     phone: optionalEnv("BUSINESS_PHONE"),
     email: optionalEnv("BUSINESS_EMAIL"),
     nid: optionalEnv("BUSINESS_NID"),
+    reviewUrl: optionalEnv("BUSINESS_REVIEW_URL"),
   };
 }

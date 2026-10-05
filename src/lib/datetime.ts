@@ -64,6 +64,22 @@ export function formatDateRangeLong(
   return `${f.d} ${MONTHS[f.m - 1]} ${f.y} - ${t.d} ${MONTHS[t.m - 1]} ${t.y}`;
 }
 
+/** Today as "YYYY-MM-DD" in the local timezone, so call it client-side only. */
+export function todayYMD(now: Date = new Date()): string {
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+}
+
+/** True once the last booked day lies before `today` (a "YYYY-MM-DD" string). */
+export function hasEnded(
+  from: string | undefined,
+  to: string | undefined,
+  today: string,
+): boolean {
+  const end = parseYMD(to) ?? parseYMD(from);
+  if (!end) return false;
+  return `${end.y}-${pad2(end.m)}-${pad2(end.d)}` < today;
+}
+
 /**
  * Compact date + time for the table, e.g. "02/07/26 14:30".
  * Uses the local timezone, so call it client-side only (hydration-safe).

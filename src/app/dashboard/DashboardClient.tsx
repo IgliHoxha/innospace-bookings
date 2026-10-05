@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Booking, BookingStatus, ContactInfo, Pricing } from "@/lib/types";
 import type { BookingPage } from "@/lib/db";
 import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
-import { formatDateRangeShort, formatDateTime } from "@/lib/datetime";
+import { formatDateRangeShort, formatDateTime, todayYMD } from "@/lib/datetime";
+import { reviewRequestLink } from "@/lib/review";
 import {
   bookingTypeLabel,
   emailBodyText,
@@ -441,6 +442,7 @@ export default function DashboardClient({
                         >
                           🗑
                         </button>
+                        <ReviewAsk booking={b} contact={contact} />
                       </div>
                     </td>
                   </tr>
@@ -691,6 +693,39 @@ function WhenCell({ iso }: { iso: string }) {
     <span className="dates" suppressHydrationWarning>
       {text || "-"}
     </span>
+  );
+}
+
+// Client-only like WhenCell: "today" is the browser's date, not the server's.
+function ReviewAsk({
+  booking,
+  contact,
+}: {
+  booking: Booking;
+  contact: ContactInfo;
+}) {
+  const [today, setToday] = useState("");
+  useEffect(() => {
+    setToday(todayYMD());
+  }, [booking]);
+
+  const link = today ? reviewRequestLink(booking, contact, today) : null;
+  if (!link) return null;
+  const label =
+    link.channel === "whatsapp"
+      ? "Ask for a Google review on WhatsApp"
+      : "Ask for a Google review by email";
+  return (
+    <a
+      className="review-ask"
+      href={link.href}
+      target={link.channel === "whatsapp" ? "_blank" : undefined}
+      rel="noopener noreferrer"
+      title={label}
+      aria-label={label}
+    >
+      ★ Ask for review
+    </a>
   );
 }
 

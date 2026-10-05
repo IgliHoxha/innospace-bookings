@@ -118,7 +118,7 @@ export function emailPreheader(
     : `Confirmed: ${what} Everything we have for your visit is below, and you can reply to this email if anything needs changing.`;
 }
 
-function firstName(booking: Booking): string {
+export function firstName(booking: Booking): string {
   return booking.fullName?.trim() ? booking.fullName.trim().split(" ")[0] : "";
 }
 

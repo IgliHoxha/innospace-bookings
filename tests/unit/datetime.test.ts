@@ -4,7 +4,9 @@ import {
   formatDateRangeLong,
   formatDateRangeShort,
   formatDateTime,
+  hasEnded,
   pad2,
+  todayYMD,
 } from "@/lib/datetime";
 
 // The table's range separator is an arrow. Build it from its code point so no
@@ -66,6 +68,47 @@ describe("formatDateRangeLong", () => {
     expect(formatDateRangeLong("2025-12-30", "2026-01-02")).toBe(
       "30 December 2025 - 2 January 2026",
     );
+  });
+});
+
+describe("todayYMD", () => {
+  it("renders the local date zero-padded", () => {
+    expect(todayYMD(new Date(2026, 6, 2, 23, 59))).toBe("2026-07-02");
+    expect(todayYMD(new Date(2026, 11, 31, 0, 0))).toBe("2026-12-31");
+  });
+
+  it("defaults to the current date", () => {
+    expect(todayYMD()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe("hasEnded", () => {
+  it("is true only from the day after the last booked day", () => {
+    expect(hasEnded("2026-07-01", undefined, "2026-07-01")).toBe(false);
+    expect(hasEnded("2026-07-01", undefined, "2026-07-02")).toBe(true);
+    expect(hasEnded("2026-07-01", "2026-07-03", "2026-07-03")).toBe(false);
+    expect(hasEnded("2026-07-01", "2026-07-03", "2026-07-04")).toBe(true);
+  });
+
+  it("compares across month and year boundaries", () => {
+    expect(hasEnded("2026-09-30", undefined, "2026-10-01")).toBe(true);
+    expect(hasEnded("2025-12-31", undefined, "2026-01-01")).toBe(true);
+    expect(hasEnded("2026-10-01", undefined, "2026-09-30")).toBe(false);
+  });
+
+  it("reads the date out of a timestamp", () => {
+    expect(hasEnded("2026-07-01T10:00", "2026-07-01T13:00", "2026-07-02")).toBe(
+      true,
+    );
+  });
+
+  it("falls back to the start date when the end is missing or malformed", () => {
+    expect(hasEnded("2026-07-01", "soon", "2026-07-02")).toBe(true);
+  });
+
+  it("is false without a usable date", () => {
+    expect(hasEnded(undefined, undefined, "2026-07-02")).toBe(false);
+    expect(hasEnded("not-a-date", undefined, "2026-07-02")).toBe(false);
   });
 });
 

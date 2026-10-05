@@ -84,6 +84,7 @@ misconfigured deploy fails loudly instead of silently running on a default.
 | `BUSINESS_NAME` | yes | Org name that signs off every email. |
 | `BUSINESS_WEBSITE_URL` | no | Footer link. Defaults to `https://innospacetirana.com`. |
 | `EMAIL_SIGNOFF_NAME`, other `BUSINESS_*` | no | Contact / access lines; each is omitted from the footer when blank. |
+| `BUSINESS_REVIEW_URL` | no | Google review link. When set, the dashboard offers an "ask for a review" link (WhatsApp, or email without a usable phone) on confirmed bookings whose dates have passed. |
 
 > **Login brute-force protection** is in-memory per-process (see
 > [`src/lib/rate-limit.ts`](src/lib/rate-limit.ts)): after `LOGIN_MAX_ATTEMPTS`

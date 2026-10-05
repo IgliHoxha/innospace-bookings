@@ -62,4 +62,6 @@ export interface ContactInfo {
   phone?: string;
   email?: string;
   nid?: string;
+  /** Google review link the dashboard's review request points at; unset hides it. */
+  reviewUrl?: string;
 }

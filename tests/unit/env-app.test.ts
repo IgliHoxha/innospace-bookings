@@ -82,6 +82,7 @@ describe("getContactFromEnv", () => {
     expect(c.url).toBe("https://innospacetirana.com"); // default website
     expect(c.phone).toBeUndefined();
     expect(c.nid).toBeUndefined();
+    expect(c.reviewUrl).toBeUndefined();
   });
 
   it("reads the optional BUSINESS_* / EMAIL_SIGNOFF_NAME details", () => {
@@ -89,11 +90,13 @@ describe("getContactFromEnv", () => {
     vi.stubEnv("BUSINESS_ADDRESS", "1 Test St");
     vi.stubEnv("BUSINESS_PHONE", "+355 1");
     vi.stubEnv("BUSINESS_WEBSITE_URL", "https://test.co");
+    vi.stubEnv("BUSINESS_REVIEW_URL", "https://g.page/r/fixture/review");
     expect(getContactFromEnv()).toMatchObject({
       name: "Emi",
       address: "1 Test St",
       phone: "+355 1",
       url: "https://test.co",
+      reviewUrl: "https://g.page/r/fixture/review",
     });
   });
 
