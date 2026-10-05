@@ -129,6 +129,15 @@ export default function DashboardClient({
     loadPage(); // re-sync the visible page and the stat counts
   }
 
+  async function setReviewAsked(id: string, reviewAsked: boolean) {
+    await fetch(`/api/bookings/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewAsked }),
+    });
+    loadPage();
+  }
+
   async function logout() {
     await fetch("/api/login", { method: "DELETE" });
     router.replace("/login");
@@ -442,7 +451,11 @@ export default function DashboardClient({
                         >
                           🗑
                         </button>
-                        <ReviewAsk booking={b} contact={contact} />
+                        <ReviewAsk
+                          booking={b}
+                          contact={contact}
+                          onAsked={(asked) => setReviewAsked(b.id, asked)}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -700,9 +713,11 @@ function WhenCell({ iso }: { iso: string }) {
 function ReviewAsk({
   booking,
   contact,
+  onAsked,
 }: {
   booking: Booking;
   contact: ContactInfo;
+  onAsked: (asked: boolean) => void;
 }) {
   const [today, setToday] = useState("");
   useEffect(() => {
@@ -711,6 +726,27 @@ function ReviewAsk({
 
   const link = today ? reviewRequestLink(booking, contact, today) : null;
   if (!link) return null;
+
+  if (booking.reviewAskedAt) {
+    const when = formatDateTime(booking.reviewAskedAt);
+    return (
+      <div
+        className="review-asked"
+        title={when ? `Asked for a review on ${when}` : undefined}
+      >
+        <span>✓ Asked {when.split(" ")[0]}</span>
+        {/* Opening the link is all the dashboard sees, so a slip needs a way back. */}
+        <button
+          type="button"
+          className="review-undo"
+          onClick={() => onAsked(false)}
+        >
+          Undo
+        </button>
+      </div>
+    );
+  }
+
   const label =
     link.channel === "whatsapp"
       ? "Ask for a Google review on WhatsApp"
@@ -723,6 +759,7 @@ function ReviewAsk({
       rel="noopener noreferrer"
       title={label}
       aria-label={label}
+      onClick={() => onAsked(true)}
     >
       ★ Ask for review
     </a>

@@ -55,6 +55,12 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 2,
+    up: (db) => {
+      db.exec(`ALTER TABLE bookings ADD COLUMN reviewAskedAt TEXT;`);
+    },
+  },
 ];
 
 /** The schema version this build expects: the highest migration defined. */
@@ -144,7 +150,14 @@ function fromRow(r: Row): Booking {
     from: s(r.from),
     to: s(r.to),
     note: s(r.note),
+    reviewAskedAt: s(r.reviewAskedAt),
   };
+}
+
+function findBooking(id: string): Booking | null {
+  const row = prep("SELECT * FROM bookings WHERE id = ?").get(id) as
+    Row | undefined;
+  return row ? fromRow(row) : null;
 }
 
 export async function listBookings(): Promise<Booking[]> {
@@ -284,8 +297,17 @@ export async function updateBookingStatus(
     status,
     id,
   );
-  if (res.changes === 0) return null;
-  const row = prep("SELECT * FROM bookings WHERE id = ?").get(id) as
-    Row | undefined;
-  return row ? fromRow(row) : null;
+  return res.changes === 0 ? null : findBooking(id);
+}
+
+/** Stamp (or clear) when the guest was asked for a review; null for a missing id. */
+export async function setReviewAsked(
+  id: string,
+  asked: boolean,
+): Promise<Booking | null> {
+  const res = prep("UPDATE bookings SET reviewAskedAt = ? WHERE id = ?").run(
+    asked ? new Date().toISOString() : null,
+    id,
+  );
+  return res.changes === 0 ? null : findBooking(id);
 }

@@ -39,6 +39,40 @@ describe("schema migrations", () => {
     const again = await import("@/lib/db");
     expect((await again.listBookings()).map((r) => r.id)).toEqual([b.id]);
   });
+
+  it("upgrades a version 1 file in place, keeping its rows", async () => {
+    // The table as version 1 shipped it, before reviewAskedAt existed.
+    const Database = (await import("better-sqlite3")).default;
+    const file = process.env.DATA_FILE as string;
+    const old = new Database(file);
+    old.exec(
+      `CREATE TABLE bookings (
+         id TEXT PRIMARY KEY, createdAt TEXT NOT NULL, status TEXT NOT NULL,
+         source TEXT, fullName TEXT, email TEXT, phoneNumber TEXT, plan TEXT,
+         "from" TEXT, "to" TEXT, note TEXT
+       );
+       INSERT INTO bookings (id, createdAt, status, fullName)
+         VALUES ('old-1', '2026-07-01T08:00:00.000Z', 'confirmed', 'Ada');`,
+    );
+    old.pragma("user_version = 1");
+    old.close();
+
+    const [row] = await db.listBookings();
+    expect(row).toMatchObject({ id: "old-1", status: "confirmed" });
+    expect(row.reviewAskedAt).toBeUndefined();
+    expect(
+      (await db.setReviewAsked("old-1", true))?.reviewAskedAt,
+    ).toBeTruthy();
+
+    const raw = new Database(file, { readonly: true });
+    try {
+      expect(raw.pragma("user_version", { simple: true })).toBe(
+        db.SCHEMA_VERSION,
+      );
+    } finally {
+      raw.close();
+    }
+  });
 });
 
 describe("createBooking", () => {
@@ -121,6 +155,51 @@ describe("updateBookingStatus", () => {
     const updated = await db.updateBookingStatus(b.id, "confirmed");
     expect(updated?.status).toBe("confirmed");
     expect(await db.updateBookingStatus("ghost", "confirmed")).toBeNull();
+  });
+});
+
+describe("setReviewAsked", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("starts unset on a new booking", async () => {
+    await db.createBooking(input());
+    expect((await db.listBookings())[0].reviewAskedAt).toBeUndefined();
+  });
+
+  it("stamps the time, persists it and leaves the status alone", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-02T09:30:00Z"));
+    const b = await db.createBooking(input());
+    await db.updateBookingStatus(b.id, "confirmed");
+
+    const asked = await db.setReviewAsked(b.id, true);
+    expect(asked?.reviewAskedAt).toBe("2026-07-02T09:30:00.000Z");
+    expect(asked?.status).toBe("confirmed");
+    expect((await db.listBookings())[0].reviewAskedAt).toBe(
+      "2026-07-02T09:30:00.000Z",
+    );
+  });
+
+  it("clears the stamp again", async () => {
+    const b = await db.createBooking(input());
+    await db.setReviewAsked(b.id, true);
+    expect(
+      (await db.setReviewAsked(b.id, false))?.reviewAskedAt,
+    ).toBeUndefined();
+    expect((await db.listBookings())[0].reviewAskedAt).toBeUndefined();
+  });
+
+  it("survives a later status change", async () => {
+    const b = await db.createBooking(input());
+    await db.setReviewAsked(b.id, true);
+    expect(
+      (await db.updateBookingStatus(b.id, "confirmed"))?.reviewAskedAt,
+    ).toBeTruthy();
+  });
+
+  it("returns null for a missing id", async () => {
+    expect(await db.setReviewAsked("ghost", true)).toBeNull();
+    expect(await db.setReviewAsked("ghost", false)).toBeNull();
   });
 });
 

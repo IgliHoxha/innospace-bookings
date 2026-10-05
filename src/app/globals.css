@@ -664,6 +664,30 @@ tr:last-child td {
   background: #fef3c7;
   border-color: #b45309;
 }
+.review-asked {
+  flex: 0 0 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  color: #15803d;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.review-undo {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 400;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.review-undo:hover {
+  color: var(--ink);
+}
 
 /* Confirmation modal */
 .modal-overlay {

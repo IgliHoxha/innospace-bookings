@@ -84,7 +84,7 @@ misconfigured deploy fails loudly instead of silently running on a default.
 | `BUSINESS_NAME` | yes | Org name that signs off every email. |
 | `BUSINESS_WEBSITE_URL` | no | Footer link. Defaults to `https://innospacetirana.com`. |
 | `EMAIL_SIGNOFF_NAME`, other `BUSINESS_*` | no | Contact / access lines; each is omitted from the footer when blank. |
-| `BUSINESS_REVIEW_URL` | no | Google review link. When set, the dashboard offers an "ask for a review" link (WhatsApp, or email without a usable phone) on confirmed bookings whose dates have passed. |
+| `BUSINESS_REVIEW_URL` | no | Google review link. When set, the dashboard offers an "ask for a review" link (WhatsApp, or email without a usable phone) on confirmed bookings whose dates have passed, and records who has been asked. |
 
 > **Login brute-force protection** is in-memory per-process (see
 > [`src/lib/rate-limit.ts`](src/lib/rate-limit.ts)): after `LOGIN_MAX_ATTEMPTS`
@@ -121,7 +121,9 @@ The dashboard sits behind a branded sign-in (rate-limited per IP):
 - `GET /api/bookings`: protected; a filtered, searchable, paginated page.
 - `DELETE /api/bookings`: protected; permanently removes soft-deleted rows.
 - `PATCH /api/bookings/:id`: protected; `{ status, emailBody? }`. On
-  confirm/cancel, emails the customer (uses `emailBody` if provided).
+  confirm/cancel, emails the customer (uses `emailBody` if provided). Sent
+  `{ reviewAsked: boolean }` alone, it stamps or clears when the guest was asked
+  for a review instead, and never emails.
 - `POST` / `DELETE /api/login`: sign in (sets cookie) / sign out.
 
 Every state-changing handler runs `requireAllowedOrigin` first (CSRF defense in
@@ -209,7 +211,7 @@ docker compose cp bookings:/app/data/bookings.db ./backup.db
 src/
   app/
     api/bookings/route.ts        POST (create), GET (list)
-    api/bookings/[id]/route.ts   PATCH (status + customer email)
+    api/bookings/[id]/route.ts   PATCH (status + customer email, review marker)
     api/login/route.ts           login / logout
     dashboard/                   protected dashboard
     login/                       login page

@@ -102,3 +102,65 @@ describe("PATCH /api/bookings/[id]", () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe("PATCH /api/bookings/[id] review marker", () => {
+  it("401s without a session and stores nothing", async () => {
+    const b = await seed();
+    expect((await patch(b.id, { reviewAsked: true })).status).toBe(401);
+    expect((await db.listBookings())[0].reviewAskedAt).toBeUndefined();
+  });
+
+  it("marks a booking as asked without touching its status or emailing", async () => {
+    const b = await seed();
+    await db.updateBookingStatus(b.id, "confirmed");
+    const res = await patch(b.id, { reviewAsked: true }, sessionToken());
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.ok).toBe(true);
+    expect(json.booking.status).toBe("confirmed");
+    expect(Number.isNaN(Date.parse(json.booking.reviewAskedAt))).toBe(false);
+    expect((await db.listBookings())[0].reviewAskedAt).toBe(
+      json.booking.reviewAskedAt,
+    );
+    expect(email.sendCustomerStatusEmail).not.toHaveBeenCalled();
+  });
+
+  it("clears the marker", async () => {
+    const b = await seed();
+    await patch(b.id, { reviewAsked: true }, sessionToken());
+    const res = await patch(b.id, { reviewAsked: false }, sessionToken());
+    expect(res.status).toBe(200);
+    expect((await res.json()).booking.reviewAskedAt).toBeUndefined();
+    expect((await db.listBookings())[0].reviewAskedAt).toBeUndefined();
+  });
+
+  it("400s a marker that is not a boolean", async () => {
+    const b = await seed();
+    for (const reviewAsked of ["yes", 1, null]) {
+      const res = await patch(b.id, { reviewAsked }, sessionToken());
+      expect(res.status).toBe(400);
+      expect((await res.json()).ok).toBe(false);
+    }
+    expect((await db.listBookings())[0].reviewAskedAt).toBeUndefined();
+  });
+
+  it("404s a missing booking", async () => {
+    expect(
+      (await patch("ghost", { reviewAsked: true }, sessionToken())).status,
+    ).toBe(404);
+  });
+
+  it("leaves the marker alone when a status is sent with it", async () => {
+    const b = await seed();
+    const res = await patch(
+      b.id,
+      { status: "confirmed", reviewAsked: true },
+      sessionToken(),
+    );
+    expect(res.status).toBe(200);
+    const { booking } = await res.json();
+    expect(booking.status).toBe("confirmed");
+    expect(booking.reviewAskedAt).toBeUndefined();
+    expect(email.sendCustomerStatusEmail).toHaveBeenCalledTimes(1);
+  });
+});

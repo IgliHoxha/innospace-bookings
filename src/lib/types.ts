@@ -36,6 +36,8 @@ export interface Booking extends BookingInput {
   createdAt: string;
   status: BookingStatus;
   source?: string;
+  /** When the guest was asked for a review (ISO timestamp); unset until then. */
+  reviewAskedAt?: string;
 }
 
 /** Plan pricing shown in the confirmation email, built from PRICE_* (see env-app). */
