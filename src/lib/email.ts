@@ -8,6 +8,12 @@ import {
 } from "./env-app";
 import type { Booking, ContactInfo } from "./types";
 import {
+  REVIEW_EMAIL_HEADING,
+  reviewEmailPreheader,
+  reviewEmailSubject,
+  reviewEmailText,
+} from "./review";
+import {
   emailBodyText,
   emailHeading,
   emailPreheader,
@@ -211,4 +217,38 @@ export async function sendCustomerStatusEmail(
       preheader: emailPreheader(booking, status, contact),
     }),
   });
+}
+
+/**
+ * The automatic post-visit review request. Resolves true only when Resend
+ * accepted it, so the caller knows whether the guest has really been asked.
+ */
+export async function sendReviewRequestEmail(
+  booking: Booking,
+): Promise<boolean> {
+  const contact = getContactFromEnv();
+  const body = reviewEmailText(booking, contact);
+  const to = booking.email?.trim();
+  if (!body || !to) return false;
+
+  const resend = client();
+  if (!resend) return false;
+
+  const { error } = await resend.emails.send({
+    from: from(),
+    to: [to],
+    subject: reviewEmailSubject(contact),
+    html: shell({
+      accent: BRAND,
+      heading: REVIEW_EMAIL_HEADING,
+      bodyHtml: textToHtml(body),
+      contact,
+      preheader: reviewEmailPreheader(contact),
+    }),
+  });
+  if (error) {
+    console.error("[email] review request was rejected:", error.message);
+    return false;
+  }
+  return true;
 }

@@ -81,6 +81,43 @@ export function hasEnded(
 }
 
 /**
+ * Whole days from the last booked day to `today` (1 means it ended yesterday).
+ * Null when either date is missing or malformed.
+ */
+export function daysSinceEnd(
+  from: string | undefined,
+  to: string | undefined,
+  today: string,
+): number | null {
+  const end = parseYMD(to) ?? parseYMD(from);
+  const now = parseYMD(today);
+  if (!end || !now) return null;
+  const utc = (p: { y: number; m: number; d: number }) =>
+    Date.UTC(p.y, p.m - 1, p.d);
+  return Math.round((utc(now) - utc(end)) / 86_400_000);
+}
+
+/** The calendar day ("YYYY-MM-DD") and hour (0-23) of `now` in an IANA time zone. */
+export function zonedDay(
+  now: Date,
+  timeZone: string,
+): { ymd: string; hour: number } {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const at = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return {
+    ymd: `${at("year")}-${at("month")}-${at("day")}`,
+    hour: Number(at("hour")),
+  };
+}
+
+/**
  * Compact date + time for the table, e.g. "02/07/26 14:30".
  * Uses the local timezone, so call it client-side only (hydration-safe).
  */

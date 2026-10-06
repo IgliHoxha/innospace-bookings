@@ -1,6 +1,7 @@
-// Pure helpers for the dashboard's "ask for a review" link. No env access (the
-// caller passes contact), so this module is safe to import from a client component.
-import { hasEnded } from "./datetime";
+// Pure helpers for asking a guest for a review: the dashboard's link and the
+// automatic email. No env access (the caller passes contact), so this module is
+// safe to import from a client component.
+import { daysSinceEnd, hasEnded } from "./datetime";
 import { firstName } from "./templates";
 import type { Booking, ContactInfo } from "./types";
 
@@ -40,6 +41,45 @@ export function reviewRequestText(
     "",
     "We hope to see you again.",
   ].join("\n");
+}
+
+/**
+ * How long after a visit the automatic email may still go out. Older visits are
+ * left to the dashboard link, so switching the feature on never mails a backlog.
+ */
+export const REVIEW_EMAIL_WINDOW_DAYS = 7;
+
+/** True when a booking should get the automatic review email on `today`. */
+export function isReviewEmailDue(booking: Booking, today: string): boolean {
+  if (booking.status !== "confirmed") return false;
+  if (booking.reviewAskedAt || booking.reviewEmailedAt) return false;
+  if (!booking.email?.trim().includes("@")) return false;
+  const days = daysSinceEnd(booking.from, booking.to, today);
+  return days !== null && days >= 1 && days <= REVIEW_EMAIL_WINDOW_DAYS;
+}
+
+export const REVIEW_EMAIL_HEADING = "Thank you for visiting";
+
+export function reviewEmailSubject(contact: ContactInfo): string {
+  return `How was your time at ${contact.org}?`;
+}
+
+/** Long enough to fill a notification snippet by itself, like the status emails. */
+export function reviewEmailPreheader(contact: ContactInfo): string {
+  return `Thank you for working from ${contact.org}. If you have a minute, we would be grateful for an honest Google review, in your own words.`;
+}
+
+/**
+ * The automatic email's body: the same neutral request as the dashboard link,
+ * plus the promise that it is sent once. Null when no review link is configured.
+ */
+export function reviewEmailText(
+  booking: Booking,
+  contact: ContactInfo,
+): string | null {
+  const request = reviewRequestText(booking, contact);
+  if (!request) return null;
+  return `${request}\n\nThis is a one-off message about your visit. We will not send it again.`;
 }
 
 /**

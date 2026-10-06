@@ -46,6 +46,7 @@ for (const key of [
   "BUSINESS_EMAIL",
   "BUSINESS_NID",
   "BUSINESS_REVIEW_URL",
+  "REVIEW_AUTO_EMAIL",
 ]) {
   delete process.env[key];
 }

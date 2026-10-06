@@ -75,6 +75,43 @@ describe("schema migrations", () => {
   });
 });
 
+describe("schema migration 3", () => {
+  it("upgrades a version 2 file in place, keeping its rows and review stamps", async () => {
+    // The table as version 2 shipped it, before reviewEmailedAt existed.
+    const Database = (await import("better-sqlite3")).default;
+    const file = process.env.DATA_FILE as string;
+    const old = new Database(file);
+    old.exec(
+      `CREATE TABLE bookings (
+         id TEXT PRIMARY KEY, createdAt TEXT NOT NULL, status TEXT NOT NULL,
+         source TEXT, fullName TEXT, email TEXT, phoneNumber TEXT, plan TEXT,
+         "from" TEXT, "to" TEXT, note TEXT, reviewAskedAt TEXT
+       );
+       INSERT INTO bookings (id, createdAt, status, fullName, reviewAskedAt)
+         VALUES ('old-2', '2026-07-01T08:00:00.000Z', 'confirmed', 'Ada',
+                 '2026-07-02T09:00:00.000Z');`,
+    );
+    old.pragma("user_version = 2");
+    old.close();
+
+    const [row] = await db.listBookings();
+    expect(row).toMatchObject({
+      id: "old-2",
+      reviewAskedAt: "2026-07-02T09:00:00.000Z",
+    });
+    expect(row.reviewEmailedAt).toBeUndefined();
+
+    const raw = new Database(file, { readonly: true });
+    try {
+      expect(raw.pragma("user_version", { simple: true })).toBe(
+        db.SCHEMA_VERSION,
+      );
+    } finally {
+      raw.close();
+    }
+  });
+});
+
 describe("createBooking", () => {
   it("stamps a new website booking and returns it", async () => {
     const b = await db.createBooking(input());
@@ -200,6 +237,110 @@ describe("setReviewAsked", () => {
   it("returns null for a missing id", async () => {
     expect(await db.setReviewAsked("ghost", true)).toBeNull();
     expect(await db.setReviewAsked("ghost", false)).toBeNull();
+  });
+});
+
+describe("review email queue", () => {
+  const AT = "2026-07-02T09:30:00.000Z";
+
+  const confirmed = async (over: Partial<BookingInput> = {}) => {
+    const b = await db.createBooking(input(over));
+    await db.updateBookingStatus(b.id, "confirmed");
+    return b;
+  };
+  const candidateIds = async () =>
+    (await db.listReviewCandidates()).map((b) => b.id);
+  const stored = async (id: string) =>
+    (await db.listBookings()).find((b) => b.id === id);
+
+  it("lists confirmed bookings that have an email address, oldest first", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-01T08:00:00Z"));
+    const first = await confirmed({ email: "ada@example.com" });
+    vi.setSystemTime(new Date("2026-07-01T09:00:00Z"));
+    const second = await confirmed({ email: "grace@example.com" });
+    await db.createBooking(input({ email: "new@example.com" }));
+    const cancelled = await db.createBooking(input({ email: "c@example.com" }));
+    await db.updateBookingStatus(cancelled.id, "cancelled");
+    await confirmed({ email: undefined });
+    await confirmed({ email: "   " });
+    vi.useRealTimers();
+
+    expect(await candidateIds()).toEqual([first.id, second.id]);
+  });
+
+  it("leaves out a guest already asked by hand", async () => {
+    const b = await confirmed();
+    await db.setReviewAsked(b.id, true);
+    expect(await candidateIds()).toEqual([]);
+  });
+
+  it("leaves out every booking of a guest asked on another one, whatever the casing", async () => {
+    const asked = await confirmed({ email: "Ada@Example.com" });
+    await confirmed({ email: " ada@example.com " });
+    const other = await confirmed({ email: "grace@example.com" });
+    await db.setReviewAsked(asked.id, true);
+    expect(await candidateIds()).toEqual([other.id]);
+  });
+
+  it("claims a booking by stamping both review fields with the given time", async () => {
+    const b = await confirmed();
+    expect(await db.claimReviewEmail(b.id, AT)).toBe(true);
+    expect(await stored(b.id)).toMatchObject({
+      reviewAskedAt: AT,
+      reviewEmailedAt: AT,
+      status: "confirmed",
+    });
+    expect(await candidateIds()).toEqual([]);
+  });
+
+  it("refuses a second claim, so overlapping runs cannot both send", async () => {
+    const b = await confirmed();
+    expect(await db.claimReviewEmail(b.id, AT)).toBe(true);
+    expect(await db.claimReviewEmail(b.id, "2026-07-03T09:30:00.000Z")).toBe(
+      false,
+    );
+    expect((await stored(b.id))?.reviewEmailedAt).toBe(AT);
+  });
+
+  it("refuses a second booking by the same person once the first is claimed", async () => {
+    const first = await confirmed({ email: "ada@example.com" });
+    const second = await confirmed({ email: "ADA@example.com" });
+    expect(await db.claimReviewEmail(first.id, AT)).toBe(true);
+    expect(await db.claimReviewEmail(second.id, AT)).toBe(false);
+    expect((await stored(second.id))?.reviewEmailedAt).toBeUndefined();
+  });
+
+  it("refuses a booking that is not confirmed, already asked or unknown", async () => {
+    const fresh = await db.createBooking(input());
+    expect(await db.claimReviewEmail(fresh.id, AT)).toBe(false);
+
+    const asked = await confirmed({ email: "grace@example.com" });
+    await db.setReviewAsked(asked.id, true);
+    expect(await db.claimReviewEmail(asked.id, AT)).toBe(false);
+    expect((await stored(asked.id))?.reviewEmailedAt).toBeUndefined();
+
+    expect(await db.claimReviewEmail("ghost", AT)).toBe(false);
+  });
+
+  it("releases a claim, putting the booking back in the queue", async () => {
+    const b = await confirmed();
+    await db.claimReviewEmail(b.id, AT);
+    await db.releaseReviewEmail(b.id);
+    const row = await stored(b.id);
+    expect(row?.reviewAskedAt).toBeUndefined();
+    expect(row?.reviewEmailedAt).toBeUndefined();
+    expect(await candidateIds()).toEqual([b.id]);
+  });
+
+  it("keeps the email stamp when the marker is undone, so nobody is mailed twice", async () => {
+    const b = await confirmed();
+    await db.claimReviewEmail(b.id, AT);
+    const undone = await db.setReviewAsked(b.id, false);
+    expect(undone?.reviewAskedAt).toBeUndefined();
+    expect(undone?.reviewEmailedAt).toBe(AT);
+    expect(await candidateIds()).toEqual([]);
+    expect(await db.claimReviewEmail(b.id, AT)).toBe(false);
   });
 });
 

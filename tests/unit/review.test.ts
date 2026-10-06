@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  REVIEW_EMAIL_WINDOW_DAYS,
+  isReviewEmailDue,
+  reviewEmailPreheader,
+  reviewEmailSubject,
+  reviewEmailText,
   reviewRequestLink,
   reviewRequestText,
   whatsappNumber,
@@ -155,6 +160,90 @@ describe("reviewRequestLink", () => {
   it("is null when no review link is configured", () => {
     expect(
       reviewRequestLink(done, { ...CONTACT, reviewUrl: undefined }, TODAY),
+    ).toBeNull();
+  });
+});
+
+describe("isReviewEmailDue", () => {
+  it("is due the day after a confirmed visit", () => {
+    expect(isReviewEmailDue(done, TODAY)).toBe(true);
+  });
+
+  it("stays due through the window and not a day longer", () => {
+    const last = `2026-07-0${1 + REVIEW_EMAIL_WINDOW_DAYS}`;
+    expect(isReviewEmailDue(done, last)).toBe(true);
+    expect(isReviewEmailDue(done, "2026-07-09")).toBe(false);
+  });
+
+  it("waits until the last booked day is over", () => {
+    expect(isReviewEmailDue(done, "2026-07-01")).toBe(false);
+    expect(isReviewEmailDue({ ...done, to: "2026-07-05" }, TODAY)).toBe(false);
+    expect(isReviewEmailDue({ ...done, to: "2026-07-05" }, "2026-07-06")).toBe(
+      true,
+    );
+  });
+
+  it("only follows a confirmed booking", () => {
+    for (const status of ["new", "cancelled", "deleted"] as const) {
+      expect(isReviewEmailDue({ ...done, status }, TODAY)).toBe(false);
+    }
+  });
+
+  it("skips a guest who was already asked, by hand or by email", () => {
+    const at = "2026-07-02T08:00:00.000Z";
+    expect(isReviewEmailDue({ ...done, reviewAskedAt: at }, TODAY)).toBe(false);
+    expect(isReviewEmailDue({ ...done, reviewEmailedAt: at }, TODAY)).toBe(
+      false,
+    );
+  });
+
+  it("needs an email address to send to", () => {
+    expect(isReviewEmailDue({ ...done, email: undefined }, TODAY)).toBe(false);
+    expect(isReviewEmailDue({ ...done, email: "  " }, TODAY)).toBe(false);
+    expect(isReviewEmailDue({ ...done, email: "not-an-address" }, TODAY)).toBe(
+      false,
+    );
+  });
+
+  it("is never due without a usable date", () => {
+    expect(isReviewEmailDue({ ...done, from: undefined }, TODAY)).toBe(false);
+    expect(isReviewEmailDue({ ...done, from: "soon" }, TODAY)).toBe(false);
+  });
+});
+
+describe("review email copy", () => {
+  it("names the business in the subject and the preview line", () => {
+    expect(reviewEmailSubject(CONTACT)).toBe(
+      "How was your time at InnoSpace Tirana?",
+    );
+    expect(reviewEmailPreheader(CONTACT)).toContain("InnoSpace Tirana");
+    // Long enough to fill a notification snippet without help from the body.
+    expect(reviewEmailPreheader(CONTACT).length).toBeGreaterThan(100);
+  });
+
+  it("repeats the dashboard's neutral request and promises it is sent once", () => {
+    const text = reviewEmailText(done, CONTACT) ?? "";
+    expect(text).toContain(reviewRequestText(done, CONTACT) as string);
+    expect(text).toContain(REVIEW_URL);
+    expect(text.endsWith("We will not send it again.")).toBe(true);
+  });
+
+  it("asks for nothing Google forbids: no stars, no wording, no reward", () => {
+    const all = [
+      reviewEmailText(done, CONTACT),
+      reviewEmailSubject(CONTACT),
+      reviewEmailPreheader(CONTACT),
+    ]
+      .join(" ")
+      .toLowerCase();
+    for (const word of ["star", "5", "five", "discount", "free", "positive"]) {
+      expect(all).not.toContain(word);
+    }
+  });
+
+  it("has no body without a review link", () => {
+    expect(
+      reviewEmailText(done, { ...CONTACT, reviewUrl: undefined }),
     ).toBeNull();
   });
 });

@@ -61,6 +61,12 @@ const MIGRATIONS: Migration[] = [
       db.exec(`ALTER TABLE bookings ADD COLUMN reviewAskedAt TEXT;`);
     },
   },
+  {
+    version: 3,
+    up: (db) => {
+      db.exec(`ALTER TABLE bookings ADD COLUMN reviewEmailedAt TEXT;`);
+    },
+  },
 ];
 
 /** The schema version this build expects: the highest migration defined. */
@@ -151,6 +157,7 @@ function fromRow(r: Row): Booking {
     to: s(r.to),
     note: s(r.note),
     reviewAskedAt: s(r.reviewAskedAt),
+    reviewEmailedAt: s(r.reviewEmailedAt),
   };
 }
 
@@ -298,6 +305,50 @@ export async function updateBookingStatus(
     id,
   );
   return res.changes === 0 ? null : findBooking(id);
+}
+
+// True for a row whose email address has already been asked on another booking,
+// by hand or by the automatic email. One person is asked once, however often they book.
+const ASKED_ELSEWHERE = `EXISTS (
+  SELECT 1 FROM bookings o
+  WHERE o.id <> bookings.id
+    AND LOWER(TRIM(o.email)) = LOWER(TRIM(bookings.email))
+    AND (o.reviewAskedAt IS NOT NULL OR o.reviewEmailedAt IS NOT NULL)
+)`;
+
+const NEVER_ASKED = `reviewAskedAt IS NULL AND reviewEmailedAt IS NULL AND NOT ${ASKED_ELSEWHERE}`;
+
+/** Confirmed bookings with an email address whose guest has never been asked for a review. */
+export async function listReviewCandidates(): Promise<Booking[]> {
+  const rows = prep(
+    `SELECT * FROM bookings
+     WHERE status = 'confirmed' AND TRIM(IFNULL(email, '')) <> '' AND ${NEVER_ASKED}
+     ORDER BY createdAt`,
+  ).all() as Row[];
+  return rows.map(fromRow);
+}
+
+/**
+ * Reserve a booking for the automatic review email by stamping it first, so two
+ * overlapping runs or two bookings by one person can never both send. False when
+ * the row is no longer eligible.
+ */
+export async function claimReviewEmail(
+  id: string,
+  at: string,
+): Promise<boolean> {
+  const res = prep(
+    `UPDATE bookings SET reviewEmailedAt = @at, reviewAskedAt = @at
+     WHERE id = @id AND status = 'confirmed' AND ${NEVER_ASKED}`,
+  ).run({ id, at });
+  return res.changes === 1;
+}
+
+/** Undo a claim whose email could not be sent, so the next run tries again. */
+export async function releaseReviewEmail(id: string): Promise<void> {
+  prep(
+    "UPDATE bookings SET reviewEmailedAt = NULL, reviewAskedAt = NULL WHERE id = ?",
+  ).run(id);
 }
 
 /** Stamp (or clear) when the guest was asked for a review; null for a missing id. */

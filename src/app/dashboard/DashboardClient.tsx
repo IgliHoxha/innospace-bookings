@@ -729,12 +729,17 @@ function ReviewAsk({
 
   if (booking.reviewAskedAt) {
     const when = formatDateTime(booking.reviewAskedAt);
+    // The automatic email stamps both fields at once; a click stamps only this one.
+    const emailed = booking.reviewEmailedAt === booking.reviewAskedAt;
+    const how = emailed ? "Review request emailed" : "Asked for a review";
     return (
       <div
         className="review-asked"
-        title={when ? `Asked for a review on ${when}` : undefined}
+        title={when ? `${how} on ${when}` : undefined}
       >
-        <span>✓ Asked {when.split(" ")[0]}</span>
+        <span>
+          ✓ {emailed ? "Emailed" : "Asked"} {when.split(" ")[0]}
+        </span>
         {/* Opening the link is all the dashboard sees, so a slip needs a way back. */}
         <button
           type="button"

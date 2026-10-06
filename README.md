@@ -85,6 +85,7 @@ misconfigured deploy fails loudly instead of silently running on a default.
 | `BUSINESS_WEBSITE_URL` | no | Footer link. Defaults to `https://innospacetirana.com`. |
 | `EMAIL_SIGNOFF_NAME`, other `BUSINESS_*` | no | Contact / access lines; each is omitted from the footer when blank. |
 | `BUSINESS_REVIEW_URL` | no | Google review link. When set, the dashboard offers an "ask for a review" link (WhatsApp, or email without a usable phone) on confirmed bookings whose dates have passed, and records who has been asked. |
+| `REVIEW_AUTO_EMAIL` | no | `on` emails each guest one review request the day after a confirmed visit (see [Automatic review request](#automatic-review-request)). Needs `BUSINESS_REVIEW_URL` and `RESEND_API_KEY`. Blank sends nothing. |
 
 > **Login brute-force protection** is in-memory per-process (see
 > [`src/lib/rate-limit.ts`](src/lib/rate-limit.ts)): after `LOGIN_MAX_ATTEMPTS`
@@ -137,6 +138,26 @@ depth alongside the `sameSite=lax` cookie), then the session guard in
 `src/lib/templates.ts` holds the confirm/cancel bodies (shared by the mailer and
 the dashboard preview, so the preview matches what's sent). Each booking row in
 the dashboard has an editable Confirm/Cancel email; your edits are sent verbatim.
+
+### Automatic review request
+
+With `REVIEW_AUTO_EMAIL=on`, a guest gets one email the day after a confirmed
+visit, asking for an honest Google review in their own words. The wording
+suggests no rating and offers nothing in return, as Google requires.
+
+- **Who:** confirmed bookings with an email address whose last day was 1 to 7
+  days ago. Older visits are left to the dashboard link, so switching this on
+  never mails a backlog.
+- **Once per person:** an address that has been asked before, by this email or
+  by the dashboard link, is never emailed, however often that person books.
+- **When:** between 09:00 and 20:00 Tirana time. There is no scheduler: the
+  check runs each time the server starts, and the Fly machine starts on every
+  wake, so the email goes out the first time the app is used that day (a
+  visitor opening the booking form is enough). A visit that sees no wake for a
+  week is skipped.
+- **In the dashboard:** the row shows "Emailed" with the date. Undo clears the
+  marker only; the guest is still never emailed twice.
+- A send that fails is retried on the next start.
 
 The customer receives a branded message (the confirmation for a monthly pass):
 
@@ -219,6 +240,9 @@ src/
     db.ts        SQLite storage + users/auth
     email.ts     Resend customer emails
     templates.ts email bodies + pricing (shared with the UI)
+    review.ts    review request copy and rules (shared with the UI)
+    review-auto.ts  the automatic review email run
+  instrumentation.ts             starts that run when the server starts
     auth.ts      cookie session
     cors.ts · types.ts
 data/bookings.db                 the database (git-ignored)

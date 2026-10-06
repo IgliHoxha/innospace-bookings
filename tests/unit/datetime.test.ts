@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  daysSinceEnd,
   formatDMYShort,
   formatDateRangeLong,
   formatDateRangeShort,
@@ -7,6 +8,7 @@ import {
   hasEnded,
   pad2,
   todayYMD,
+  zonedDay,
 } from "@/lib/datetime";
 
 // The table's range separator is an arrow. Build it from its code point so no
@@ -116,5 +118,69 @@ describe("formatDateTime", () => {
   it("renders a local DD/MM/YY HH:MM, or empty for junk", () => {
     expect(formatDateTime("2026-07-02T14:30:00")).toBe("02/07/26 14:30");
     expect(formatDateTime("not-a-date")).toBe("");
+  });
+});
+
+describe("daysSinceEnd", () => {
+  it("counts whole days from the last booked day", () => {
+    expect(daysSinceEnd("2026-07-01", undefined, "2026-07-02")).toBe(1);
+    expect(daysSinceEnd("2026-07-01", "2026-07-03", "2026-07-10")).toBe(7);
+  });
+
+  it("is zero on the last day and negative before it", () => {
+    expect(daysSinceEnd("2026-07-01", "2026-07-03", "2026-07-03")).toBe(0);
+    expect(daysSinceEnd("2026-07-01", "2026-07-03", "2026-07-01")).toBe(-2);
+  });
+
+  it("crosses month, year and clock-change boundaries without drifting", () => {
+    expect(daysSinceEnd("2026-07-31", undefined, "2026-08-01")).toBe(1);
+    expect(daysSinceEnd("2026-12-31", undefined, "2027-01-01")).toBe(1);
+    expect(daysSinceEnd("2026-03-28", undefined, "2026-03-30")).toBe(2);
+    expect(daysSinceEnd("2026-10-24", undefined, "2026-10-26")).toBe(2);
+  });
+
+  it("reads the date out of a timestamp and falls back to the start date", () => {
+    expect(
+      daysSinceEnd("2026-07-01T10:00", "2026-07-01T13:00", "2026-07-02"),
+    ).toBe(1);
+    expect(daysSinceEnd("2026-07-01", "soon", "2026-07-02")).toBe(1);
+  });
+
+  it("is null without two usable dates", () => {
+    expect(daysSinceEnd(undefined, undefined, "2026-07-02")).toBeNull();
+    expect(daysSinceEnd("not-a-date", undefined, "2026-07-02")).toBeNull();
+    expect(daysSinceEnd("2026-07-01", undefined, "today")).toBeNull();
+  });
+});
+
+describe("zonedDay", () => {
+  const ZONE = "Europe/Tirane";
+
+  it("reads the day and hour in the zone, in winter and in summer", () => {
+    expect(zonedDay(new Date("2026-01-15T08:30:00Z"), ZONE)).toEqual({
+      ymd: "2026-01-15",
+      hour: 9,
+    });
+    expect(zonedDay(new Date("2026-07-02T08:30:00Z"), ZONE)).toEqual({
+      ymd: "2026-07-02",
+      hour: 10,
+    });
+  });
+
+  it("rolls the day over when the zone is already past midnight", () => {
+    expect(zonedDay(new Date("2026-07-01T22:30:00Z"), ZONE)).toEqual({
+      ymd: "2026-07-02",
+      hour: 0,
+    });
+  });
+
+  it("follows whichever zone it is given", () => {
+    expect(zonedDay(new Date("2026-07-02T02:00:00Z"), "UTC")).toEqual({
+      ymd: "2026-07-02",
+      hour: 2,
+    });
+    expect(
+      zonedDay(new Date("2026-07-02T02:00:00Z"), "America/New_York"),
+    ).toEqual({ ymd: "2026-07-01", hour: 22 });
   });
 });

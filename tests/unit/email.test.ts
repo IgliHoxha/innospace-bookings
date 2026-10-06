@@ -404,3 +404,73 @@ describe("the accent rule under the header", () => {
     expect(html).not.toContain("padding:22px 28px;border-bottom");
   });
 });
+
+describe("sendReviewRequestEmail", () => {
+  const REVIEW_URL = "https://g.page/r/fixture/review";
+  const VISITED: Booking = { ...BOOKING, status: "confirmed" };
+
+  beforeEach(() => {
+    vi.stubEnv("BUSINESS_REVIEW_URL", REVIEW_URL);
+  });
+
+  it("sends the neutral request to the guest and reports it sent", async () => {
+    expect(await email.sendReviewRequestEmail(VISITED)).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
+    const mail = send.mock.calls[0][0];
+    expect(mail.from).toBe("onboarding@resend.dev");
+    expect(mail.to).toEqual(["ada@example.com"]);
+    expect(mail.subject).toBe("How was your time at Test Org?");
+    expect(mail.html).toContain(`<a href="${REVIEW_URL}"`);
+    expect(mail.html).toContain("Hi Ada, thank you for choosing Test Org.");
+    expect(mail.html).toContain("We will not send it again.");
+    expect(mail.html).toContain("Thank you for visiting");
+  });
+
+  it("carries a preview line of its own", async () => {
+    await email.sendReviewRequestEmail(VISITED);
+    expect(htmlOf()).toContain("Thank you for working from Test Org.");
+  });
+
+  it("trims the address it sends to", async () => {
+    await email.sendReviewRequestEmail({
+      ...VISITED,
+      email: "  ada@example.com ",
+    });
+    expect(send.mock.calls[0][0].to).toEqual(["ada@example.com"]);
+  });
+
+  it("sends nothing and says so when there is no review link", async () => {
+    vi.stubEnv("BUSINESS_REVIEW_URL", "");
+    expect(await email.sendReviewRequestEmail(VISITED)).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing when the booking has no email address", async () => {
+    expect(
+      await email.sendReviewRequestEmail({ ...VISITED, email: undefined }),
+    ).toBe(false);
+    expect(
+      await email.sendReviewRequestEmail({ ...VISITED, email: "   " }),
+    ).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing when the mail key is unset", async () => {
+    vi.stubEnv("RESEND_API_KEY", "");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await email.sendReviewRequestEmail(VISITED)).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("reports a request Resend rejected as not sent", async () => {
+    send.mockResolvedValueOnce({
+      data: null,
+      error: { name: "validation_error", message: "bad address" },
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await email.sendReviewRequestEmail(VISITED)).toBe(false);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+});

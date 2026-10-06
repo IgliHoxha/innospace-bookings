@@ -38,6 +38,8 @@ export interface Booking extends BookingInput {
   source?: string;
   /** When the guest was asked for a review (ISO timestamp); unset until then. */
   reviewAskedAt?: string;
+  /** When the automatic review email went out; kept even if the marker above is undone. */
+  reviewEmailedAt?: string;
 }
 
 /** Plan pricing shown in the confirmation email, built from PRICE_* (see env-app). */
