@@ -315,6 +315,73 @@ async function loadDbOnSameFile(): Promise<Db> {
   return import("@/lib/db");
 }
 
+describe("schema migration 5", () => {
+  const indexes = () =>
+    raw((f) =>
+      Object.fromEntries(
+        (f.pragma("index_list(bookings)") as { name: string }[]).map((i) => [
+          i.name,
+          (f.pragma(`index_info(${i.name})`) as { name: string }[]).map(
+            (c) => c.name,
+          ),
+        ]),
+      ),
+    );
+
+  it("indexes what the list filters and orders by", async () => {
+    await db.listBookings(); // opens the connection, running the migrations
+    expect(indexes()).toMatchObject({
+      idx_bookings_createdAt: ["createdAt"],
+      idx_bookings_status_createdAt: ["status", "createdAt"],
+      idx_bookings_guestId: ["guestId"],
+    });
+  });
+
+  it("adds the index to a version 4 file, leaving its rows alone", async () => {
+    const kept = await db.createBooking(input());
+    await db.updateBookingStatus(kept.id, "confirmed");
+    // The file as version 4 left it: the same tables, without this index.
+    const v4 = new Database(process.env.DATA_FILE as string);
+    v4.exec("DROP INDEX idx_bookings_status_createdAt");
+    v4.pragma("user_version = 4");
+    v4.close();
+    expect(indexes()).not.toHaveProperty("idx_bookings_status_createdAt");
+
+    const again = await loadDbOnSameFile();
+    expect(await again.listBookings()).toMatchObject([
+      { id: kept.id, status: "confirmed", email: "ada@example.com" },
+    ]);
+    expect(indexes()).toHaveProperty("idx_bookings_status_createdAt", [
+      "status",
+      "createdAt",
+    ]);
+    raw((f) =>
+      expect(f.pragma("user_version", { simple: true })).toBe(
+        again.SCHEMA_VERSION,
+      ),
+    );
+  });
+
+  it("lets SQLite read a status tab's first page straight off the index", async () => {
+    for (let i = 0; i < 40; i++) await db.createBooking(input());
+    // The shape of the list query: one status, newest request first, one page.
+    const plan = raw(
+      (f) =>
+        f
+          .prepare(
+            `EXPLAIN QUERY PLAN
+           SELECT b.id, g.email FROM bookings b LEFT JOIN guests g ON g.id = b.guestId
+           WHERE status = ? ORDER BY createdAt DESC LIMIT ? OFFSET ?`,
+          )
+          .all("new", 25, 0) as { detail: string }[],
+    )
+      .map((step) => step.detail)
+      .join(" | ");
+    expect(plan).toContain("idx_bookings_status_createdAt (status=?)");
+    expect(plan).not.toContain("TEMP B-TREE");
+  });
+});
+
 describe("guests", () => {
   it("links a second booking to the guest already known by that address", async () => {
     const first = await db.createBooking(input({ email: "Ada@Example.com" }));

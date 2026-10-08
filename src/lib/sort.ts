@@ -18,8 +18,8 @@ export interface SortState {
   dir: SortDir;
 }
 
-/** How the table opens: the latest booked day on top. */
-export const INITIAL_SORT: SortState = { key: "dates", dir: "desc" };
+/** How the table opens: the newest request on top. */
+export const INITIAL_SORT: SortState = { key: "createdAt", dir: "desc" };
 
 // A date column opens newest first; a text column opens A to Z.
 const FIRST_DIR: Record<BookingSort, SortDir> = {

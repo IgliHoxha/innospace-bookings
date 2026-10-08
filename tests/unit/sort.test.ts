@@ -20,8 +20,15 @@ describe("sort constants", () => {
     ]);
   });
 
-  it("opens the table on the latest booked day", () => {
-    expect(INITIAL_SORT).toEqual({ key: "dates", dir: "desc" });
+  it("opens the table on the newest request", () => {
+    expect(INITIAL_SORT).toEqual({ key: "createdAt", dir: "desc" });
+  });
+
+  it("flips to oldest first on a click on the column it opens with", () => {
+    expect(nextSort(INITIAL_SORT, INITIAL_SORT.key)).toEqual({
+      key: "createdAt",
+      dir: "asc",
+    });
   });
 });
 

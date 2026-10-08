@@ -119,6 +119,17 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    up: (db) => {
+      // Serves a status tab's newest-first page, the view the dashboard opens
+      // on. The createdAt index alone has to walk every booking whenever the
+      // tab holds less than a page, which is the usual state of "new".
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bookings_status_createdAt ON bookings(status, createdAt);`,
+      );
+    },
+  },
 ];
 
 /** The schema version this build expects: the highest migration defined. */
@@ -220,9 +231,9 @@ function guestIdFor(email: string | null): number | bigint {
     .lastInsertRowid;
 }
 
-// The default order: the latest booked day on top, a booking with no date at
-// the bottom, and the newest request first among bookings for the same day.
-const LATEST_FIRST = `"from" DESC NULLS LAST, createdAt DESC`;
+// The default order, and the tie-break under any column sort: the newest
+// request on top.
+const NEWEST_FIRST = "createdAt DESC";
 
 // What each sortable column orders by. Only these fixed strings reach the SQL
 // text: a sort key picks one and is never interpolated itself.
@@ -237,9 +248,9 @@ const SORT_SQL: Record<BookingSort, string> = {
 
 /** A column sort: blanks sink in either direction, and ties keep the default order. */
 function orderBy(sort?: BookingSort, dir?: SortDir): string {
-  if (!sort || !BOOKING_SORTS.includes(sort)) return `ORDER BY ${LATEST_FIRST}`;
+  if (!sort || !BOOKING_SORTS.includes(sort)) return `ORDER BY ${NEWEST_FIRST}`;
   const way = dir === "asc" ? "ASC" : "DESC";
-  return `ORDER BY ${SORT_SQL[sort]} ${way} NULLS LAST, ${LATEST_FIRST}`;
+  return `ORDER BY ${SORT_SQL[sort]} ${way} NULLS LAST, ${NEWEST_FIRST}`;
 }
 
 export async function listBookings(): Promise<Booking[]> {
@@ -266,7 +277,7 @@ export interface BookingPage {
 export interface BookingQuery {
   filter?: BookingFilter;
   search?: string;
-  sort?: BookingSort; // unset: latest booked day first
+  sort?: BookingSort; // unset: newest request first
   dir?: SortDir;
   page?: number;
   pageSize?: number;

@@ -135,108 +135,87 @@ describe("list ordering", () => {
   };
   const names = (list: { fullName?: string }[]) => list.map((b) => b.fullName);
 
-  it("puts the latest booked day first, whatever order the requests came in", async () => {
-    await book({ fullName: "Mid", from: "2026-08-01" });
-    await book({ fullName: "Late", from: "2026-09-01" });
-    await book({ fullName: "Early", from: "2026-07-01" });
+  it("puts the newest request first, whatever dates the bookings are for", async () => {
+    await book({ fullName: "First", from: "2026-09-01" });
+    await book({ fullName: "Second", from: "2026-07-01" });
+    await book({ fullName: "Third", from: "2026-08-01" });
+    await book({ fullName: "Fourth", from: undefined });
 
-    const expected = ["Late", "Mid", "Early"];
+    const expected = ["Fourth", "Third", "Second", "First"];
     expect(names(await db.listBookings())).toEqual(expected);
     expect(names((await db.queryBookings()).bookings)).toEqual(expected);
   });
 
-  it("orders across a year boundary by the date, not the day or month", async () => {
-    await book({ fullName: "January", from: "2027-01-02" });
-    await book({ fullName: "December", from: "2026-12-31" });
+  it("orders by the moment of the request, across a year boundary", async () => {
+    vi.setSystemTime(new Date("2027-01-01T00:00:01Z"));
+    await db.createBooking(input({ fullName: "January" }));
+    vi.setSystemTime(new Date("2026-12-31T23:59:59Z"));
+    await db.createBooking(input({ fullName: "December" }));
+    vi.setSystemTime(new Date("2026-02-03T10:00:00Z"));
+    await db.createBooking(input({ fullName: "February" }));
 
     expect(names((await db.queryBookings()).bookings)).toEqual([
       "January",
       "December",
+      "February",
     ]);
-  });
-
-  it("orders a multi-day booking by its first day", async () => {
-    await book({ fullName: "Long", from: "2026-07-01", to: "2026-07-30" });
-    await book({ fullName: "Short", from: "2026-07-15" });
-
-    expect(names((await db.queryBookings()).bookings)).toEqual([
-      "Short",
-      "Long",
-    ]);
-  });
-
-  it("puts the newest request first among bookings for the same day", async () => {
-    await book({ fullName: "First" });
-    await book({ fullName: "Second" });
-
-    const expected = ["Second", "First"];
-    expect(names(await db.listBookings())).toEqual(expected);
-    expect(names((await db.queryBookings()).bookings)).toEqual(expected);
-  });
-
-  it("puts bookings with no date last, newest request first among them", async () => {
-    await book({ fullName: "Undated old", from: undefined });
-    await book({ fullName: "Undated new", from: undefined });
-    await book({ fullName: "Dated", from: "2026-07-01" });
-
-    const expected = ["Dated", "Undated new", "Undated old"];
-    expect(names(await db.listBookings())).toEqual(expected);
-    expect(names((await db.queryBookings()).bookings)).toEqual(expected);
   });
 
   it("keeps the order on every status filter", async () => {
-    for (const status of [
-      "new",
-      "confirmed",
-      "cancelled",
-      "deleted",
-    ] as const) {
+    const statuses = ["new", "confirmed", "cancelled", "deleted"] as const;
+    for (const status of statuses) {
       const made = [
-        await book({ fullName: `${status} mid`, from: "2026-08-01" }),
-        await book({ fullName: `${status} late`, from: "2026-09-01" }),
-        await book({ fullName: `${status} early`, from: "2026-07-01" }),
+        await book({ fullName: `${status} 1st`, from: "2026-09-01" }),
+        await book({ fullName: `${status} 2nd`, from: "2026-07-01" }),
+        await book({ fullName: `${status} 3rd`, from: "2026-08-01" }),
       ];
       for (const b of made) await db.updateBookingStatus(b.id, status);
     }
 
-    for (const status of [
-      "new",
-      "confirmed",
-      "cancelled",
-      "deleted",
-    ] as const) {
+    for (const status of statuses) {
       const page = await db.queryBookings({ filter: status });
       expect(names(page.bookings)).toEqual([
-        `${status} late`,
-        `${status} mid`,
-        `${status} early`,
+        `${status} 3rd`,
+        `${status} 2nd`,
+        `${status} 1st`,
       ]);
     }
 
-    // "all" mixes the statuses by date; the newest request leads within a day.
+    // "all" interleaves the statuses by request time and leaves the deleted out.
     expect(names((await db.queryBookings({ filter: "all" })).bookings)).toEqual(
       [
-        "cancelled late",
-        "confirmed late",
-        "new late",
-        "cancelled mid",
-        "confirmed mid",
-        "new mid",
-        "cancelled early",
-        "confirmed early",
-        "new early",
+        "cancelled 3rd",
+        "cancelled 2nd",
+        "cancelled 1st",
+        "confirmed 3rd",
+        "confirmed 2nd",
+        "confirmed 1st",
+        "new 3rd",
+        "new 2nd",
+        "new 1st",
       ],
     );
   });
 
+  it("is not reshuffled when a booking's status changes", async () => {
+    const first = await book({ fullName: "First" });
+    await book({ fullName: "Second" });
+    await book({ fullName: "Third" });
+    await db.updateBookingStatus(first.id, "confirmed");
+
+    expect(names((await db.queryBookings({ filter: "all" })).bookings)).toEqual(
+      ["Third", "Second", "First"],
+    );
+  });
+
   it("keeps the order under a search", async () => {
-    await book({ fullName: "Ada One", from: "2026-07-01" });
+    await book({ fullName: "Ada One", from: "2026-12-01" });
     await book({
       fullName: "Bob",
       email: "bob@example.com",
       from: "2026-10-01",
     });
-    await book({ fullName: "Ada Two", from: "2026-09-01" });
+    await book({ fullName: "Ada Two", from: "2026-07-01" });
 
     expect(names((await db.queryBookings({ search: "ada" })).bookings)).toEqual(
       ["Ada Two", "Ada One"],
@@ -244,14 +223,14 @@ describe("list ordering", () => {
   });
 
   it("carries the order across pages", async () => {
-    await book({ fullName: "Mid", from: "2026-08-01" });
-    await book({ fullName: "Undated", from: undefined });
-    await book({ fullName: "Late", from: "2026-09-01" });
-    await book({ fullName: "Early", from: "2026-07-01" });
+    await book({ fullName: "First", from: "2026-08-01" });
+    await book({ fullName: "Second", from: undefined });
+    await book({ fullName: "Third", from: "2026-09-01" });
+    await book({ fullName: "Fourth", from: "2026-07-01" });
 
     const page = (n: number) => db.queryBookings({ page: n, pageSize: 2 });
-    expect(names((await page(1)).bookings)).toEqual(["Late", "Mid"]);
-    expect(names((await page(2)).bookings)).toEqual(["Early", "Undated"]);
+    expect(names((await page(1)).bookings)).toEqual(["Fourth", "Third"]);
+    expect(names((await page(2)).bookings)).toEqual(["Second", "First"]);
   });
 
   describe("by column", () => {
@@ -298,6 +277,37 @@ describe("list ordering", () => {
       );
     });
 
+    it("sorts dates across a year boundary, and a multi-day booking by its first day", async () => {
+      await book({ fullName: "January", from: "2027-01-02" });
+      await book({ fullName: "December", from: "2026-12-31" });
+      await book({ fullName: "Long", from: "2026-07-01", to: "2026-07-30" });
+      await book({ fullName: "Short", from: "2026-07-15" });
+
+      expect(await sorted({ sort: "dates", dir: "desc" })).toEqual([
+        "January",
+        "December",
+        "Short",
+        "Long",
+      ]);
+    });
+
+    it("sorts by date whatever order the requests came in", async () => {
+      await book({ fullName: "Mid", from: "2026-08-01" });
+      await book({ fullName: "Late", from: "2026-09-01" });
+      await book({ fullName: "Early", from: "2026-07-01" });
+
+      expect(await sorted({ sort: "dates", dir: "desc" })).toEqual([
+        "Late",
+        "Mid",
+        "Early",
+      ]);
+      expect(await sorted({ sort: "dates", dir: "asc" })).toEqual([
+        "Early",
+        "Mid",
+        "Late",
+      ]);
+    });
+
     it("sorts descending when only the column is given", async () => {
       await seed();
       expect(await sorted({ sort: "guest" })).toEqual(["Cy", "bea", "Ada"]);
@@ -318,18 +328,31 @@ describe("list ordering", () => {
       },
     );
 
-    it("keeps the default order among rows the column cannot separate", async () => {
-      await book({ fullName: "Mid", from: "2026-08-01" });
-      await book({ fullName: "Late old", from: "2026-09-01" });
-      await book({ fullName: "Late new", from: "2026-09-01" });
-      await book({ fullName: "Early", from: "2026-07-01" });
+    it("puts the newest request first among rows the column cannot separate", async () => {
+      await book({ fullName: "First", from: "2026-08-01" });
+      await book({ fullName: "Second", from: "2026-09-01" });
+      await book({ fullName: "Third", from: "2026-09-01" });
+      await book({ fullName: "Fourth", from: "2026-07-01" });
 
       // One plan and one status throughout, so either direction leaves the ties.
-      const expected = ["Late new", "Late old", "Mid", "Early"];
+      const newest = ["Fourth", "Third", "Second", "First"];
       for (const sort of ["plan", "status"] as const) {
-        expect(await sorted({ sort, dir: "asc" })).toEqual(expected);
-        expect(await sorted({ sort, dir: "desc" })).toEqual(expected);
+        expect(await sorted({ sort, dir: "asc" })).toEqual(newest);
+        expect(await sorted({ sort, dir: "desc" })).toEqual(newest);
       }
+      // Two bookings share a day: the later request leads in either direction.
+      expect(await sorted({ sort: "dates", dir: "desc" })).toEqual([
+        "Third",
+        "Second",
+        "First",
+        "Fourth",
+      ]);
+      expect(await sorted({ sort: "dates", dir: "asc" })).toEqual([
+        "Fourth",
+        "First",
+        "Third",
+        "Second",
+      ]);
     });
 
     it("falls back to the default order for a column it does not know", async () => {
@@ -341,7 +364,7 @@ describe("list ordering", () => {
       ]) {
         expect(
           await sorted({ sort: sort as Query["sort"], dir: "asc" }),
-        ).toEqual(["Ada", "bea", "Cy"]);
+        ).toEqual(["Cy", "Ada", "bea"]);
       }
       expect(await db.listBookings()).toHaveLength(3);
     });

@@ -109,14 +109,20 @@ describe("GET /api/bookings (protected)", () => {
     expect(body.bookings[0].fullName).toBe("Bob");
   });
 
-  it("lists the latest booked day first on every status filter and page", async () => {
-    // Requested in an order that matches neither the dates nor their reverse.
-    const made = [
-      await db.createBooking({ fullName: "Mid", from: "2026-08-01" }),
-      await db.createBooking({ fullName: "Undated" }),
-      await db.createBooking({ fullName: "Late", from: "2026-09-01" }),
-      await db.createBooking({ fullName: "Early", from: "2026-07-01" }),
+  it("lists the newest request first on every status filter and page", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // The dates run against the request order, so a date sort would differ.
+    const rows = [
+      { fullName: "First", from: "2026-09-01" },
+      { fullName: "Second" },
+      { fullName: "Third", from: "2026-07-01" },
+      { fullName: "Fourth", from: "2026-08-01" },
     ];
+    const made = [];
+    for (const [hour, row] of rows.entries()) {
+      vi.setSystemTime(new Date(Date.UTC(2026, 5, 1, hour)));
+      made.push(await db.createBooking(row));
+    }
     const names = async (qs: string) => {
       const res = await route.GET(
         makeRequest(`/api/bookings?${qs}`, { token: sessionToken() }),
@@ -124,8 +130,9 @@ describe("GET /api/bookings (protected)", () => {
       const body = (await res.json()) as { bookings: { fullName: string }[] };
       return body.bookings.map((b) => b.fullName);
     };
-    const expected = ["Late", "Mid", "Early", "Undated"];
+    const expected = ["Fourth", "Third", "Second", "First"];
 
+    expect(await names("")).toEqual(expected);
     expect(await names("status=all")).toEqual(expected);
     expect(await names("status=all&page=2&pageSize=2")).toEqual(
       expected.slice(2),
@@ -135,6 +142,7 @@ describe("GET /api/bookings (protected)", () => {
       for (const b of made) await db.updateBookingStatus(b.id, status);
       expect(await names(`status=${status}`)).toEqual(expected);
     }
+    vi.useRealTimers();
   });
 
   describe("sort and dir params", () => {
@@ -187,14 +195,15 @@ describe("GET /api/bookings (protected)", () => {
     });
 
     it("ignores an unknown column or direction instead of failing", async () => {
-      const byDate = ["Ada", "bea", "Cy"];
-      expect(await names("sort=email&dir=asc")).toEqual(byDate);
-      expect(await names("sort=constructor")).toEqual(byDate);
+      // The default: newest request first (bea, then Ada, then Cy were made).
+      const newest = ["Cy", "Ada", "bea"];
+      expect(await names("sort=email&dir=asc")).toEqual(newest);
+      expect(await names("sort=constructor")).toEqual(newest);
       expect(
         await names(
           `sort=${encodeURIComponent("createdAt; DROP TABLE bookings")}`,
         ),
-      ).toEqual(byDate);
+      ).toEqual(newest);
       expect(await names("sort=guest&dir=sideways")).toEqual([
         "Cy",
         "bea",
