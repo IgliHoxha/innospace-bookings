@@ -109,6 +109,34 @@ describe("GET /api/bookings (protected)", () => {
     expect(body.bookings[0].fullName).toBe("Bob");
   });
 
+  it("lists the latest booked day first on every status filter and page", async () => {
+    // Requested in an order that matches neither the dates nor their reverse.
+    const made = [
+      await db.createBooking({ fullName: "Mid", from: "2026-08-01" }),
+      await db.createBooking({ fullName: "Undated" }),
+      await db.createBooking({ fullName: "Late", from: "2026-09-01" }),
+      await db.createBooking({ fullName: "Early", from: "2026-07-01" }),
+    ];
+    const names = async (qs: string) => {
+      const res = await route.GET(
+        makeRequest(`/api/bookings?${qs}`, { token: sessionToken() }),
+      );
+      const body = (await res.json()) as { bookings: { fullName: string }[] };
+      return body.bookings.map((b) => b.fullName);
+    };
+    const expected = ["Late", "Mid", "Early", "Undated"];
+
+    expect(await names("status=all")).toEqual(expected);
+    expect(await names("status=all&page=2&pageSize=2")).toEqual(
+      expected.slice(2),
+    );
+    expect(await names("status=new")).toEqual(expected);
+    for (const status of ["confirmed", "cancelled", "deleted"] as const) {
+      for (const b of made) await db.updateBookingStatus(b.id, status);
+      expect(await names(`status=${status}`)).toEqual(expected);
+    }
+  });
+
   it("falls back to the 'all' filter for an unknown status param", async () => {
     await db.createBooking({ fullName: "Ada" });
     const res = await route.GET(

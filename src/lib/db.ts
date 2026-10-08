@@ -167,10 +167,12 @@ function findBooking(id: string): Booking | null {
   return row ? fromRow(row) : null;
 }
 
+// Every list's order: the latest booked day on top, a booking with no date at
+// the bottom, and the newest request first among bookings for the same day.
+const LATEST_FIRST = `ORDER BY "from" DESC NULLS LAST, createdAt DESC`;
+
 export async function listBookings(): Promise<Booking[]> {
-  const rows = prep(
-    "SELECT * FROM bookings ORDER BY createdAt DESC",
-  ).all() as Row[];
+  const rows = prep(`SELECT * FROM bookings ${LATEST_FIRST}`).all() as Row[];
   return rows.map(fromRow);
 }
 
@@ -258,7 +260,7 @@ export async function queryBookings(
 
   const rows = db
     .prepare(
-      `SELECT * FROM bookings ${whereSql} ORDER BY createdAt DESC LIMIT ? OFFSET ?`,
+      `SELECT * FROM bookings ${whereSql} ${LATEST_FIRST} LIMIT ? OFFSET ?`,
     )
     .all(...params, pageSize, (page - 1) * pageSize) as Row[];
 

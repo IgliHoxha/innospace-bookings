@@ -123,18 +123,135 @@ describe("createBooking", () => {
   });
 });
 
-describe("listBookings ordering", () => {
+describe("list ordering", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["Date"] }));
   afterEach(() => vi.useRealTimers());
 
-  it("returns newest first by createdAt", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-07-01T10:00:00Z"));
-    const first = await db.createBooking(input({ fullName: "First" }));
-    vi.setSystemTime(new Date("2026-07-01T11:00:00Z"));
-    const second = await db.createBooking(input({ fullName: "Second" }));
+  // Each booking is requested an hour after the one before it.
+  let hour = 0;
+  const book = (over: Partial<BookingInput>) => {
+    vi.setSystemTime(new Date(Date.UTC(2026, 5, 1, hour++)));
+    return db.createBooking(input(over));
+  };
+  const names = (list: { fullName?: string }[]) => list.map((b) => b.fullName);
 
-    const list = await db.listBookings();
-    expect(list.map((b) => b.id)).toEqual([second.id, first.id]);
+  it("puts the latest booked day first, whatever order the requests came in", async () => {
+    await book({ fullName: "Mid", from: "2026-08-01" });
+    await book({ fullName: "Late", from: "2026-09-01" });
+    await book({ fullName: "Early", from: "2026-07-01" });
+
+    const expected = ["Late", "Mid", "Early"];
+    expect(names(await db.listBookings())).toEqual(expected);
+    expect(names((await db.queryBookings()).bookings)).toEqual(expected);
+  });
+
+  it("orders across a year boundary by the date, not the day or month", async () => {
+    await book({ fullName: "January", from: "2027-01-02" });
+    await book({ fullName: "December", from: "2026-12-31" });
+
+    expect(names((await db.queryBookings()).bookings)).toEqual([
+      "January",
+      "December",
+    ]);
+  });
+
+  it("orders a multi-day booking by its first day", async () => {
+    await book({ fullName: "Long", from: "2026-07-01", to: "2026-07-30" });
+    await book({ fullName: "Short", from: "2026-07-15" });
+
+    expect(names((await db.queryBookings()).bookings)).toEqual([
+      "Short",
+      "Long",
+    ]);
+  });
+
+  it("puts the newest request first among bookings for the same day", async () => {
+    await book({ fullName: "First" });
+    await book({ fullName: "Second" });
+
+    const expected = ["Second", "First"];
+    expect(names(await db.listBookings())).toEqual(expected);
+    expect(names((await db.queryBookings()).bookings)).toEqual(expected);
+  });
+
+  it("puts bookings with no date last, newest request first among them", async () => {
+    await book({ fullName: "Undated old", from: undefined });
+    await book({ fullName: "Undated new", from: undefined });
+    await book({ fullName: "Dated", from: "2026-07-01" });
+
+    const expected = ["Dated", "Undated new", "Undated old"];
+    expect(names(await db.listBookings())).toEqual(expected);
+    expect(names((await db.queryBookings()).bookings)).toEqual(expected);
+  });
+
+  it("keeps the order on every status filter", async () => {
+    for (const status of [
+      "new",
+      "confirmed",
+      "cancelled",
+      "deleted",
+    ] as const) {
+      const made = [
+        await book({ fullName: `${status} mid`, from: "2026-08-01" }),
+        await book({ fullName: `${status} late`, from: "2026-09-01" }),
+        await book({ fullName: `${status} early`, from: "2026-07-01" }),
+      ];
+      for (const b of made) await db.updateBookingStatus(b.id, status);
+    }
+
+    for (const status of [
+      "new",
+      "confirmed",
+      "cancelled",
+      "deleted",
+    ] as const) {
+      const page = await db.queryBookings({ filter: status });
+      expect(names(page.bookings)).toEqual([
+        `${status} late`,
+        `${status} mid`,
+        `${status} early`,
+      ]);
+    }
+
+    // "all" mixes the statuses by date; the newest request leads within a day.
+    expect(names((await db.queryBookings({ filter: "all" })).bookings)).toEqual(
+      [
+        "cancelled late",
+        "confirmed late",
+        "new late",
+        "cancelled mid",
+        "confirmed mid",
+        "new mid",
+        "cancelled early",
+        "confirmed early",
+        "new early",
+      ],
+    );
+  });
+
+  it("keeps the order under a search", async () => {
+    await book({ fullName: "Ada One", from: "2026-07-01" });
+    await book({
+      fullName: "Bob",
+      email: "bob@example.com",
+      from: "2026-10-01",
+    });
+    await book({ fullName: "Ada Two", from: "2026-09-01" });
+
+    expect(names((await db.queryBookings({ search: "ada" })).bookings)).toEqual(
+      ["Ada Two", "Ada One"],
+    );
+  });
+
+  it("carries the order across pages", async () => {
+    await book({ fullName: "Mid", from: "2026-08-01" });
+    await book({ fullName: "Undated", from: undefined });
+    await book({ fullName: "Late", from: "2026-09-01" });
+    await book({ fullName: "Early", from: "2026-07-01" });
+
+    const page = (n: number) => db.queryBookings({ page: n, pageSize: 2 });
+    expect(names((await page(1)).bookings)).toEqual(["Late", "Mid"]);
+    expect(names((await page(2)).bookings)).toEqual(["Early", "Undated"]);
   });
 });
 
