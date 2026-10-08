@@ -209,6 +209,51 @@ describe("GET /api/bookings (protected)", () => {
     });
   });
 
+  it("searches by the guest's email address and reports the matching total", async () => {
+    await db.createBooking({ fullName: "Ada", email: "ada@example.com" });
+    await db.createBooking({ fullName: "Grace", email: "Hopper@Navy.example" });
+    await db.createBooking({ fullName: "Nobody" });
+
+    const res = await route.GET(
+      makeRequest("/api/bookings?status=all&q=HOPPER%40navy", {
+        token: sessionToken(),
+      }),
+    );
+    const body = await res.json();
+    expect(body.total).toBe(1);
+    expect(body.counts.total).toBe(3);
+    expect(body.bookings.map((b: { email: string }) => b.email)).toEqual([
+      "Hopper@Navy.example",
+    ]);
+  });
+
+  it("totals each tab from its tally when there is no search", async () => {
+    const made = [
+      await db.createBooking({ fullName: "Ada" }),
+      await db.createBooking({ fullName: "Bob" }),
+      await db.createBooking({ fullName: "Cy" }),
+    ];
+    await db.updateBookingStatus(made[1].id, "confirmed");
+    await db.updateBookingStatus(made[2].id, "deleted");
+
+    for (const [status, total] of [
+      ["all", 2],
+      ["new", 1],
+      ["confirmed", 1],
+      ["cancelled", 0],
+      ["deleted", 1],
+    ] as const) {
+      const res = await route.GET(
+        makeRequest(`/api/bookings?status=${status}`, {
+          token: sessionToken(),
+        }),
+      );
+      const body = await res.json();
+      expect(body.total).toBe(total);
+      expect(body.bookings).toHaveLength(total);
+    }
+  });
+
   it("falls back to the 'all' filter for an unknown status param", async () => {
     await db.createBooking({ fullName: "Ada" });
     const res = await route.GET(
@@ -260,5 +305,20 @@ describe("DELETE /api/bookings (protected)", () => {
     const res = await del({ ids: [b.id] }, sessionToken());
     expect(res.status).toBe(200);
     expect((await res.json()).removed).toBe(1);
+  });
+
+  it("forgets a guest with their last booking, so a return visit starts clean", async () => {
+    const old = await db.createBooking({ email: "ada@example.com" });
+    await db.setReviewAsked(old.id, true);
+    await db.updateBookingStatus(old.id, "deleted");
+    expect(
+      (await (await del({ ids: [old.id] }, sessionToken())).json()).removed,
+    ).toBe(1);
+
+    const res = await post({ fullName: "Ada", email: "ada@example.com" });
+    expect(res.status).toBe(201);
+    const [back] = (await db.queryBookings()).bookings;
+    expect(back.email).toBe("ada@example.com");
+    expect(back.reviewAskedAt).toBeUndefined();
   });
 });

@@ -150,6 +150,36 @@ describe("PATCH /api/bookings/[id] review marker", () => {
     ).toBe(404);
   });
 
+  it("marks, and clears, every booking of the same guest at once", async () => {
+    const first = await seed();
+    const second = await db.createBooking({
+      fullName: "Ada again",
+      email: " ADA@example.com",
+    });
+    const other = await db.createBooking({ email: "grace@example.com" });
+    const asked = async () =>
+      Object.fromEntries(
+        (await db.listBookings()).map((b) => [b.id, b.reviewAskedAt]),
+      );
+
+    const res = await patch(second.id, { reviewAsked: true }, sessionToken());
+    expect(res.status).toBe(200);
+    const at = (await res.json()).booking.reviewAskedAt;
+    expect(await asked()).toEqual({
+      [first.id]: at,
+      [second.id]: at,
+      [other.id]: undefined,
+    });
+
+    // Undone from the other booking: it is the guest's marker, not the row's.
+    await patch(first.id, { reviewAsked: false }, sessionToken());
+    expect(await asked()).toEqual({
+      [first.id]: undefined,
+      [second.id]: undefined,
+      [other.id]: undefined,
+    });
+  });
+
   it("leaves the marker alone when a status is sent with it", async () => {
     const b = await seed();
     const res = await patch(

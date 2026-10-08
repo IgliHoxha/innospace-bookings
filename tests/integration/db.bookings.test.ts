@@ -400,6 +400,54 @@ describe("queryBookings", () => {
     expect((await db.queryBookings({ search: "bob" })).total).toBe(1);
   });
 
+  it("totals a tab the same with and without a search that matches it all", async () => {
+    const made = [];
+    for (const status of [
+      "new",
+      "confirmed",
+      "cancelled",
+      "deleted",
+    ] as const) {
+      for (
+        let i = 0;
+        i <= ["new", "confirmed", "cancelled", "deleted"].indexOf(status);
+        i++
+      ) {
+        const b = await db.createBooking(input({ note: "shared note" }));
+        await db.updateBookingStatus(b.id, status);
+        made.push(b);
+      }
+    }
+
+    // 1 new, 2 confirmed, 3 cancelled, 4 deleted: "all" leaves the deleted out.
+    const expected = { all: 6, new: 1, confirmed: 2, cancelled: 3, deleted: 4 };
+    for (const [filter, total] of Object.entries(expected)) {
+      const f = filter as keyof typeof expected;
+      expect((await db.queryBookings({ filter: f })).total).toBe(total);
+      expect(
+        (await db.queryBookings({ filter: f, search: "shared note" })).total,
+      ).toBe(total);
+      expect(
+        (await db.queryBookings({ filter: f, search: "no such thing" })).total,
+      ).toBe(0);
+    }
+    expect(made).toHaveLength(10);
+  });
+
+  it("finds a booking by its guest's email address", async () => {
+    await db.createBooking(
+      input({ fullName: "Ada", email: "ada@example.com" }),
+    );
+    const grace = await db.createBooking(
+      input({ fullName: "Grace", email: "Hopper@Navy.example" }),
+    );
+    await db.createBooking(input({ fullName: "Nobody", email: undefined }));
+
+    const found = await db.queryBookings({ search: "hopper@navy" });
+    expect(found.total).toBe(1);
+    expect(found.bookings.map((b) => b.id)).toEqual([grace.id]);
+  });
+
   it("clamps page and pageSize to sane bounds", async () => {
     for (let i = 0; i < 3; i++) await db.createBooking(input());
     const page = await db.queryBookings({ page: 0, pageSize: 2 });
@@ -544,8 +592,11 @@ describe("review email queue", () => {
     const first = await confirmed({ email: "ada@example.com" });
     const second = await confirmed({ email: "ADA@example.com" });
     expect(await db.claimReviewEmail(first.id, AT)).toBe(true);
-    expect(await db.claimReviewEmail(second.id, AT)).toBe(false);
-    expect((await stored(second.id))?.reviewEmailedAt).toBeUndefined();
+    expect(
+      await db.claimReviewEmail(second.id, "2026-07-03T09:30:00.000Z"),
+    ).toBe(false);
+    // One guest, one stamp: the second booking shows the first one's claim.
+    expect((await stored(second.id))?.reviewEmailedAt).toBe(AT);
   });
 
   it("refuses a booking that is not confirmed, already asked or unknown", async () => {

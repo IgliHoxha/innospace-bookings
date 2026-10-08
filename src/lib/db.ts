@@ -1,4 +1,7 @@
 // SQLite (better-sqlite3) DB on the persistent volume. One file, indexed, ACID.
+// Two tables: `guests` holds what is true of a person (their email address and
+// whether they were asked for a review), `bookings` holds each request and
+// points at its guest.
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
@@ -21,10 +24,6 @@ function dbFile(): string {
     optionalEnv("DATA_FILE") ?? path.join(process.cwd(), "data", "bookings.db")
   );
 }
-
-// `from`/`to` are SQL reserved words - keep them quoted.
-const COLS =
-  'id,createdAt,status,source,fullName,email,phoneNumber,plan,"from","to",note';
 
 const inList = (xs: readonly string[]) => xs.map((x) => `'${x}'`).join(", ");
 const TABLE_BODY = `(
@@ -69,6 +68,57 @@ const MIGRATIONS: Migration[] = [
       db.exec(`ALTER TABLE bookings ADD COLUMN reviewEmailedAt TEXT;`);
     },
   },
+  {
+    // Moves the email address and the review stamps off the booking and onto one
+    // `guests` row per person, which every booking by that person points at.
+    version: 4,
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE guests (
+          id INTEGER PRIMARY KEY,
+          -- One guest per address, whatever its casing. NULL, any number of
+          -- times, for a booking that left none.
+          email TEXT UNIQUE COLLATE NOCASE,
+          reviewAskedAt TEXT,
+          reviewEmailedAt TEXT
+        );
+        ALTER TABLE bookings ADD COLUMN guestId INTEGER REFERENCES guests(id);
+        CREATE INDEX idx_bookings_guestId ON bookings(guestId);
+
+        -- One guest per address, spelled as on that person's first booking
+        -- (the bare column follows MIN's row).
+        INSERT INTO guests (email)
+          SELECT TRIM(email) FROM (
+            SELECT email, MIN(createdAt) FROM bookings
+            WHERE TRIM(IFNULL(email, '')) <> ''
+            GROUP BY LOWER(TRIM(email))
+          );
+        UPDATE bookings
+          SET guestId = (SELECT id FROM guests WHERE guests.email = TRIM(bookings.email))
+          WHERE TRIM(IFNULL(email, '')) <> '';
+      `);
+
+      // No address means nothing to match on, so each such booking gets its own guest.
+      const addGuest = db.prepare("INSERT INTO guests (email) VALUES (NULL)");
+      const link = db.prepare("UPDATE bookings SET guestId = ? WHERE id = ?");
+      const unlinked = db
+        .prepare("SELECT id FROM bookings WHERE guestId IS NULL")
+        .all() as { id: string }[];
+      for (const { id } of unlinked)
+        link.run(addGuest.run().lastInsertRowid, id);
+
+      db.exec(`
+        -- A guest was asked if any of their bookings was; keep the latest stamp.
+        UPDATE guests SET
+          reviewAskedAt = (SELECT MAX(reviewAskedAt) FROM bookings WHERE guestId = guests.id),
+          reviewEmailedAt = (SELECT MAX(reviewEmailedAt) FROM bookings WHERE guestId = guests.id);
+
+        ALTER TABLE bookings DROP COLUMN email;
+        ALTER TABLE bookings DROP COLUMN reviewAskedAt;
+        ALTER TABLE bookings DROP COLUMN reviewEmailedAt;
+      `);
+    },
+  },
 ];
 
 /** The schema version this build expects: the highest migration defined. */
@@ -104,14 +154,17 @@ function getDb(): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
   migrate(db);
+  // Off by default in SQLite. Switched on only after migrating, since a
+  // migration that rebuilds a table needs it off.
+  db.pragma("foreign_keys = ON");
   _db = db;
   _stmts = new Map();
   return db;
 }
 
-// A prepared statement compiled once per connection and reused. Pass only static
-// SQL: a query whose text varies per call (dynamic WHERE / placeholder count)
-// would fill the cache with one-off entries, so those keep using db.prepare.
+// A prepared statement compiled once per connection and reused. Pass only SQL
+// drawn from a fixed set of texts: one that grows with its input (a placeholder
+// per id) would fill the cache with one-off entries, so that keeps using db.prepare.
 function prep(sql: string): Database.Statement {
   const db = getDb();
   let stmt = _stmts!.get(sql);
@@ -120,28 +173,6 @@ function prep(sql: string): Database.Statement {
     _stmts!.set(sql, stmt);
   }
   return stmt;
-}
-
-function insert(b: Booking) {
-  prep(
-    `INSERT INTO bookings (${COLS}) VALUES (@id,@createdAt,@status,@source,@fullName,@email,@phoneNumber,@plan,@from,@to,@note)`,
-  ).run(toRow(b));
-}
-
-function toRow(b: Booking): Row {
-  return {
-    id: b.id,
-    createdAt: b.createdAt,
-    status: b.status,
-    source: b.source ?? "website",
-    fullName: b.fullName ?? null,
-    email: b.email ?? null,
-    phoneNumber: b.phoneNumber ?? null,
-    plan: b.plan ?? null,
-    from: b.from ?? null,
-    to: b.to ?? null,
-    note: b.note ?? null,
-  };
 }
 
 function fromRow(r: Row): Booking {
@@ -163,10 +194,30 @@ function fromRow(r: Row): Booking {
   };
 }
 
+// A booking as the app reads it: the row plus its guest's address and review
+// stamps. `from`/`to` are SQL reserved words - keep them quoted.
+const BOOKING_ROWS = `SELECT b.id, b.createdAt, b.status, b.source, b.fullName,
+    g.email, b.phoneNumber, b.plan, b."from", b."to", b.note,
+    g.reviewAskedAt, g.reviewEmailedAt
+  FROM bookings b LEFT JOIN guests g ON g.id = b.guestId`;
+
 function findBooking(id: string): Booking | null {
-  const row = prep("SELECT * FROM bookings WHERE id = ?").get(id) as
-    Row | undefined;
+  const row = prep(`${BOOKING_ROWS} WHERE b.id = ?`).get(id) as Row | undefined;
   return row ? fromRow(row) : null;
+}
+
+// The guest of a booking, for statements that write to that guest.
+const GUEST_OF = "(SELECT guestId FROM bookings WHERE id = @id)";
+
+/** The guest behind an address, added on first sight. No address: a guest of their own. */
+function guestIdFor(email: string | null): number | bigint {
+  if (email) {
+    const known = prep("SELECT id FROM guests WHERE email = ?").get(email) as
+      { id: number } | undefined;
+    if (known) return known.id;
+  }
+  return prep("INSERT INTO guests (email) VALUES (?)").run(email)
+    .lastInsertRowid;
 }
 
 // The default order: the latest booked day on top, a booking with no date at
@@ -192,7 +243,7 @@ function orderBy(sort?: BookingSort, dir?: SortDir): string {
 }
 
 export async function listBookings(): Promise<Booking[]> {
-  const rows = prep(`SELECT * FROM bookings ${orderBy()}`).all() as Row[];
+  const rows = prep(`${BOOKING_ROWS} ${orderBy()}`).all() as Row[];
   return rows.map(fromRow);
 }
 
@@ -246,19 +297,20 @@ function bookingCounts(): BookingCounts {
 export async function queryBookings(
   q: BookingQuery = {},
 ): Promise<BookingPage> {
-  const db = getDb();
   const page = Math.max(1, Math.trunc(q.page ?? 1));
   const pageSize = Math.min(100, Math.max(1, Math.trunc(q.pageSize ?? 25)));
+  const filter = q.filter ?? "all";
+  const counts = bookingCounts();
 
   const where: string[] = [];
   const params: (string | number)[] = [];
 
   // "all" (or unset) hides soft-deleted; any explicit status filters to it.
-  if (!q.filter || q.filter === "all") {
+  if (filter === "all") {
     where.push("status != 'deleted'");
   } else {
     where.push("status = ?");
-    params.push(q.filter);
+    params.push(filter);
   }
 
   const search = (q.search ?? "").trim().toLowerCase();
@@ -272,39 +324,48 @@ export async function queryBookings(
     SEARCH_COLS.forEach(() => params.push(like));
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const whereSql = `WHERE ${where.join(" AND ")}`;
 
-  const total = (
-    db
-      .prepare(`SELECT COUNT(*) AS n FROM bookings ${whereSql}`)
-      .get(...params) as { n: number }
-  ).n;
+  // Without a search the tab's tally is the answer, so only a search counts.
+  const total = search
+    ? (
+        prep(
+          `SELECT COUNT(*) AS n FROM bookings b LEFT JOIN guests g ON g.id = b.guestId ${whereSql}`,
+        ).get(...params) as { n: number }
+      ).n
+    : filter === "all"
+      ? counts.total
+      : counts[filter];
 
-  const rows = db
-    .prepare(
-      `SELECT * FROM bookings ${whereSql} ${orderBy(q.sort, q.dir)} LIMIT ? OFFSET ?`,
-    )
-    .all(...params, pageSize, (page - 1) * pageSize) as Row[];
+  // Cached like the rest: filter, search and sort only ever combine into a few
+  // dozen distinct texts.
+  const rows = prep(
+    `${BOOKING_ROWS} ${whereSql} ${orderBy(q.sort, q.dir)} LIMIT ? OFFSET ?`,
+  ).all(...params, pageSize, (page - 1) * pageSize) as Row[];
 
-  return {
-    bookings: rows.map(fromRow),
-    total,
-    page,
-    pageSize,
-    counts: bookingCounts(),
-  };
+  return { bookings: rows.map(fromRow), total, page, pageSize, counts };
 }
 
 export async function createBooking(input: BookingInput): Promise<Booking> {
-  const booking: Booking = {
-    ...input,
-    id: randomUUID(),
-    createdAt: new Date().toISOString(),
-    status: "new",
-    source: "website",
-  };
-  insert(booking);
-  return booking;
+  const id = randomUUID();
+  // The guest and the booking land together or not at all.
+  getDb().transaction(() => {
+    prep(
+      `INSERT INTO bookings (id, createdAt, status, source, guestId, fullName, phoneNumber, plan, "from", "to", note)
+       VALUES (@id, @createdAt, 'new', 'website', @guestId, @fullName, @phoneNumber, @plan, @from, @to, @note)`,
+    ).run({
+      id,
+      createdAt: new Date().toISOString(),
+      guestId: guestIdFor(input.email?.trim() || null),
+      fullName: input.fullName ?? null,
+      phoneNumber: input.phoneNumber ?? null,
+      plan: input.plan ?? null,
+      from: input.from ?? null,
+      to: input.to ?? null,
+      note: input.note ?? null,
+    });
+  })();
+  return findBooking(id) as Booking;
 }
 
 /** Permanently remove rows - guarded to soft-deleted ones only. Returns the count removed. */
@@ -312,12 +373,21 @@ export async function deleteBookings(ids: string[]): Promise<number> {
   if (ids.length === 0) return 0;
   const db = getDb();
   const placeholders = ids.map(() => "?").join(",");
-  const res = db
-    .prepare(
-      `DELETE FROM bookings WHERE status = 'deleted' AND id IN (${placeholders})`,
-    )
-    .run(...ids);
-  return res.changes;
+  return db.transaction(() => {
+    const removed = db
+      .prepare(
+        `DELETE FROM bookings WHERE status = 'deleted' AND id IN (${placeholders})`,
+      )
+      .run(...ids).changes;
+    // A guest's address and review history leave with their last booking.
+    if (removed > 0) {
+      prep(
+        `DELETE FROM guests WHERE NOT EXISTS
+           (SELECT 1 FROM bookings WHERE bookings.guestId = guests.id)`,
+      ).run();
+    }
+    return removed;
+  })();
 }
 
 export async function updateBookingStatus(
@@ -331,39 +401,33 @@ export async function updateBookingStatus(
   return res.changes === 0 ? null : findBooking(id);
 }
 
-// True for a row whose email address has already been asked on another booking,
-// by hand or by the automatic email. One person is asked once, however often they book.
-const ASKED_ELSEWHERE = `EXISTS (
-  SELECT 1 FROM bookings o
-  WHERE o.id <> bookings.id
-    AND LOWER(TRIM(o.email)) = LOWER(TRIM(bookings.email))
-    AND (o.reviewAskedAt IS NOT NULL OR o.reviewEmailedAt IS NOT NULL)
-)`;
-
-const NEVER_ASKED = `reviewAskedAt IS NULL AND reviewEmailedAt IS NULL AND NOT ${ASKED_ELSEWHERE}`;
+// One person is asked once, however often they book: the stamps sit on the guest.
+const NEVER_ASKED = "reviewAskedAt IS NULL AND reviewEmailedAt IS NULL";
 
 /** Confirmed bookings with an email address whose guest has never been asked for a review. */
 export async function listReviewCandidates(): Promise<Booking[]> {
   const rows = prep(
-    `SELECT * FROM bookings
-     WHERE status = 'confirmed' AND TRIM(IFNULL(email, '')) <> '' AND ${NEVER_ASKED}
-     ORDER BY createdAt`,
+    `${BOOKING_ROWS}
+     WHERE b.status = 'confirmed' AND g.email IS NOT NULL
+       AND g.reviewAskedAt IS NULL AND g.reviewEmailedAt IS NULL
+     ORDER BY b.createdAt`,
   ).all() as Row[];
   return rows.map(fromRow);
 }
 
 /**
- * Reserve a booking for the automatic review email by stamping it first, so two
- * overlapping runs or two bookings by one person can never both send. False when
- * the row is no longer eligible.
+ * Reserve a booking's guest for the automatic review email by stamping them
+ * first, so two overlapping runs or two bookings by one person can never both
+ * send. False when the booking is not confirmed or its guest was already asked.
  */
 export async function claimReviewEmail(
   id: string,
   at: string,
 ): Promise<boolean> {
   const res = prep(
-    `UPDATE bookings SET reviewEmailedAt = @at, reviewAskedAt = @at
-     WHERE id = @id AND status = 'confirmed' AND ${NEVER_ASKED}`,
+    `UPDATE guests SET reviewEmailedAt = @at, reviewAskedAt = @at
+     WHERE ${NEVER_ASKED}
+       AND id = (SELECT guestId FROM bookings WHERE id = @id AND status = 'confirmed')`,
   ).run({ id, at });
   return res.changes === 1;
 }
@@ -371,18 +435,20 @@ export async function claimReviewEmail(
 /** Undo a claim whose email could not be sent, so the next run tries again. */
 export async function releaseReviewEmail(id: string): Promise<void> {
   prep(
-    "UPDATE bookings SET reviewEmailedAt = NULL, reviewAskedAt = NULL WHERE id = ?",
-  ).run(id);
+    `UPDATE guests SET reviewEmailedAt = NULL, reviewAskedAt = NULL WHERE id = ${GUEST_OF}`,
+  ).run({ id });
 }
 
-/** Stamp (or clear) when the guest was asked for a review; null for a missing id. */
+/**
+ * Stamp (or clear) when a booking's guest was asked for a review, which shows on
+ * every booking of theirs. Null for a missing id.
+ */
 export async function setReviewAsked(
   id: string,
   asked: boolean,
 ): Promise<Booking | null> {
-  const res = prep("UPDATE bookings SET reviewAskedAt = ? WHERE id = ?").run(
-    asked ? new Date().toISOString() : null,
-    id,
-  );
+  const res = prep(
+    `UPDATE guests SET reviewAskedAt = @at WHERE id = ${GUEST_OF}`,
+  ).run({ id, at: asked ? new Date().toISOString() : null });
   return res.changes === 0 ? null : findBooking(id);
 }

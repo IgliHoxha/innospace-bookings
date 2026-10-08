@@ -42,7 +42,7 @@ export interface Booking extends BookingInput {
   createdAt: string;
   status: BookingStatus;
   source?: string;
-  /** When the guest was asked for a review (ISO timestamp); unset until then. */
+  /** When the guest was asked for a review (ISO timestamp), on any booking of theirs. */
   reviewAskedAt?: string;
   /** When the automatic review email went out; kept even if the marker above is undone. */
   reviewEmailedAt?: string;

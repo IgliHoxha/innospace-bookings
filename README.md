@@ -99,8 +99,11 @@ misconfigured deploy fails loudly instead of silently running on a default.
 
 ## Data & auth
 
-- **SQLite** (`better-sqlite3`): one `bookings` table in a single file on a
-  persistent disk, WAL mode. The schema is applied by an ordered migration list
+- **SQLite** (`better-sqlite3`): two tables in a single file on a persistent
+  disk, WAL mode. `guests` holds what is true of a person (their email address,
+  whether they were asked for a review) and `bookings` holds each request and
+  points at its guest; the name and phone stay on the booking, as each request
+  gave them. The schema is applied by an ordered migration list
   in [`src/lib/db.ts`](src/lib/db.ts) keyed on `PRAGMA user_version`; to change
   it, append a new entry rather than editing a shipped one.
 - **Login** is verified against `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` in
@@ -125,7 +128,7 @@ The dashboard sits behind a branded sign-in (rate-limited per IP):
 - `PATCH /api/bookings/:id`: protected; `{ status, emailBody? }`. On
   confirm/cancel, emails the customer (uses `emailBody` if provided). Sent
   `{ reviewAsked: boolean }` alone, it stamps or clears when the guest was asked
-  for a review instead, and never emails.
+  for a review instead (which shows on every booking of theirs), and never emails.
 - `POST` / `DELETE /api/login`: sign in (sets cookie) / sign out.
 
 Every state-changing handler runs `requireAllowedOrigin` first (CSRF defense in
@@ -156,8 +159,8 @@ suggests no rating and offers nothing in return, as Google requires.
   wake, so the email goes out the first time the app is used that day (a
   visitor opening the booking form is enough). A visit that sees no wake for a
   week is skipped.
-- **In the dashboard:** the row shows "Emailed" with the date. Undo clears the
-  marker only; the guest is still never emailed twice.
+- **In the dashboard:** every booking of that guest shows "Emailed" with the
+  date. Undo clears the marker only; the guest is still never emailed twice.
 - A send that fails is retried on the next start.
 
 The customer receives a branded message (the confirmation for a monthly pass):

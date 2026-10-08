@@ -150,8 +150,9 @@ describe("automatic review emails", () => {
 
     expect((await auto.sendDueReviewEmails(NOON)).sent).toBe(1);
     expect(send).toHaveBeenCalledTimes(1);
-    expect((await stored(first.id))?.reviewEmailedAt).toBeTruthy();
-    expect((await stored(second.id))?.reviewEmailedAt).toBeUndefined();
+    // One guest, one stamp: both bookings show the single email that went out.
+    expect((await stored(first.id))?.reviewEmailedAt).toBe(NOON.toISOString());
+    expect((await stored(second.id))?.reviewEmailedAt).toBe(NOON.toISOString());
 
     // A later visit by the same person is not followed up either.
     await visit({ email: "ada@example.com", from: "2026-07-05" });
