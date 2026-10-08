@@ -44,6 +44,19 @@ function signOff(contact: ContactInfo): string[] {
   return lines;
 }
 
+// A currency written as a word ("Lek") takes a space; a symbol ("€") does not.
+function money(amount: string, currency: string): string {
+  return /^[a-z]/i.test(currency)
+    ? `${amount} ${currency}`
+    : `${amount}${currency}`;
+}
+
+// "a", "a or b", "a, b or c".
+function anyOf(parts: string[]): string {
+  if (parts.length < 3) return parts.join(" or ");
+  return `${parts.slice(0, -1).join(", ")} or ${parts[parts.length - 1]}`;
+}
+
 /** The rate sentence for a booking's plan, or null when it isn't priced. */
 export function priceLineFor(
   booking: Booking,
@@ -53,19 +66,19 @@ export function priceLineFor(
   const cur = pricing.currency;
 
   if (booking.plan === "event-room") {
-    const { hour, day } = pricing.eventRoom ?? {};
+    const { hour, halfDay, day } = pricing.eventRoom ?? {};
+    const roomCur = pricing.eventRoom?.currency ?? cur;
     const parts: string[] = [];
-    if (hour) parts.push(`${hour}${cur} per hour (minimum 3 hours)`);
-    if (day) parts.push(`${day}${cur} per day`);
-    return parts.length
-      ? `The Event Room rate is ${parts.join(" or ")}.`
-      : null;
+    if (hour) parts.push(`${money(hour, roomCur)} per hour (minimum 3 hours)`);
+    if (halfDay) parts.push(`${money(halfDay, roomCur)} per half day`);
+    if (day) parts.push(`${money(day, roomCur)} per day`);
+    return parts.length ? `The Event Room rate is ${anyOf(parts)}.` : null;
   }
 
   const meta = PLAN_META[booking.plan];
   const amount = pricing.plans[booking.plan];
   if (!meta || !amount) return null;
-  return `The ${meta.label} rate is ${amount}${cur} per ${meta.period}.`;
+  return `The ${meta.label} rate is ${money(amount, cur)} per ${meta.period}.`;
 }
 
 function titleCase(s: string): string {

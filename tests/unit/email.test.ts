@@ -161,6 +161,24 @@ describe("sendCustomerStatusEmail", () => {
     expect(send).not.toHaveBeenCalled();
     warn.mockRestore();
   });
+
+  it("quotes the event room in its own currency and a pass in the shared one", async () => {
+    vi.stubEnv("PRICE_DAILY_PASS", "15");
+    vi.stubEnv("PRICE_EVENT_ROOM_CURRENCY", "Lek");
+    vi.stubEnv("PRICE_EVENT_ROOM_HOUR", "3,000");
+    vi.stubEnv("PRICE_EVENT_ROOM_HALF_DAY", "10,000");
+    vi.stubEnv("PRICE_EVENT_ROOM_DAY", "18,000");
+    await email.sendCustomerStatusEmail(
+      { ...BOOKING, plan: "event-room" },
+      "confirmed",
+    );
+    await email.sendCustomerStatusEmail(BOOKING, "confirmed");
+    expect(htmlOf(0)).toContain(
+      "The Event Room rate is 3,000 Lek per hour (minimum 3 hours), 10,000 Lek per half day or 18,000 Lek per day.",
+    );
+    expect(htmlOf(1)).toContain("The Day Pass rate is 15€ per day.");
+    expect(htmlOf(1)).not.toContain("Lek");
+  });
 });
 
 describe("linkified body", () => {

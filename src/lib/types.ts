@@ -46,8 +46,14 @@ export interface Booking extends BookingInput {
 export interface Pricing {
   currency: string;
   plans: Partial<Record<BookingPlan, string>>;
-  // Event Room is billed by the hour (3h min) or by the day.
-  eventRoom?: { hour?: string; day?: string };
+  // Event Room is billed by the hour (3h min), the half day or the day, and
+  // may be priced in a currency of its own (`currency` falls back to the above).
+  eventRoom?: {
+    currency?: string;
+    hour?: string;
+    halfDay?: string;
+    day?: string;
+  };
 }
 
 /**

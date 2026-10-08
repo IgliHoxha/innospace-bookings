@@ -76,8 +76,9 @@ misconfigured deploy fails loudly instead of silently running on a default.
 | `ALLOWED_ORIGINS` | no | Comma-separated origins allowed to POST and to call mutating routes. Unset means any. |
 | `TURNSTILE_SECRET_KEY` | no | Cloudflare Turnstile secret. If empty, verification is skipped. |
 | `DATA_FILE` | no | SQLite path. Defaults to `./data/bookings.db`. |
-| `PRICE_CURRENCY` | yes | Currency symbol used in every rate line. |
-| `PRICE_*` (amounts) | no | Pricing packages surfaced in confirmation emails; an unpriced plan omits its rate line. |
+| `PRICE_CURRENCY` | yes | Currency used in the rate lines. A symbol (`€`) is glued to the amount, a word (`Lek`) follows it after a space. |
+| `PRICE_EVENT_ROOM_CURRENCY` | no | Currency for the Event Room only, when it differs. Defaults to `PRICE_CURRENCY`. |
+| `PRICE_*` (amounts) | no | Pricing packages surfaced in confirmation emails, printed as typed; an unpriced plan omits its rate line. The Event Room takes `_HOUR`, `_HALF_DAY` and `_DAY`. |
 | `LOGIN_MAX_ATTEMPTS` | yes | Failed logins per IP before a lockout. |
 | `LOGIN_BLOCK_SECONDS` | yes | Base lockout duration in seconds; escalates xN per lockout. |
 | `LOGIN_MAX_LOCKOUTS` | yes | Lockouts before an IP is banned outright. |
@@ -189,7 +190,8 @@ fly secrets set \
   DATA_FILE='/app/data/bookings.db' NODE_ENV='production' PORT='4000' HOSTNAME='0.0.0.0' \
   LOGIN_MAX_ATTEMPTS='5' LOGIN_BLOCK_SECONDS='60' LOGIN_MAX_LOCKOUTS='10' \
   PRICE_CURRENCY='€' PRICE_DAILY_PASS='15' PRICE_WEEKLY_PASS='60' PRICE_MONTHLY_PASS='170' \
-  PRICE_EVENT_ROOM_HOUR='25' PRICE_EVENT_ROOM_DAY='170' \
+  PRICE_EVENT_ROOM_CURRENCY='Lek' PRICE_EVENT_ROOM_HOUR='3,000' \
+  PRICE_EVENT_ROOM_HALF_DAY='10,000' PRICE_EVENT_ROOM_DAY='18,000' \
   BUSINESS_NAME='InnoSpace Tirana'
 
 fly deploy

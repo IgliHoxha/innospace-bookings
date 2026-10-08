@@ -67,6 +67,23 @@ describe("getPricingFromEnv", () => {
     expect(p.plans["daily-pass"]).toBe("20");
     expect(p.plans["weekly-pass"]).toBeUndefined();
     expect(p.eventRoom?.hour).toBe("30");
+    expect(p.eventRoom?.halfDay).toBeUndefined();
+    expect(p.eventRoom?.currency).toBeUndefined();
+  });
+
+  it("reads the event room's own currency and its half-day rate", () => {
+    vi.stubEnv("PRICE_EVENT_ROOM_CURRENCY", " Lek ");
+    vi.stubEnv("PRICE_EVENT_ROOM_HOUR", "3,000");
+    vi.stubEnv("PRICE_EVENT_ROOM_HALF_DAY", "10,000");
+    vi.stubEnv("PRICE_EVENT_ROOM_DAY", "18,000");
+    const p = getPricingFromEnv();
+    expect(p.currency).toBe("€");
+    expect(p.eventRoom).toEqual({
+      currency: "Lek",
+      hour: "3,000",
+      halfDay: "10,000",
+      day: "18,000",
+    });
   });
 
   it("throws when PRICE_CURRENCY is missing", () => {

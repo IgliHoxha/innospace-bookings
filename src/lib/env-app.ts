@@ -50,7 +50,9 @@ export function getPricingFromEnv(): Pricing {
       "monthly-pass": optionalEnv("PRICE_MONTHLY_PASS"),
     },
     eventRoom: {
+      currency: optionalEnv("PRICE_EVENT_ROOM_CURRENCY"),
       hour: optionalEnv("PRICE_EVENT_ROOM_HOUR"),
+      halfDay: optionalEnv("PRICE_EVENT_ROOM_HALF_DAY"),
       day: optionalEnv("PRICE_EVENT_ROOM_DAY"),
     },
   };

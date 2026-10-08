@@ -101,6 +101,55 @@ describe("priceLineFor", () => {
     expect(t.priceLineFor(evt, { ...NO_PRICES, eventRoom: {} })).toBeNull();
     expect(t.priceLineFor(evt, NO_PRICES)).toBeNull(); // no eventRoom key
   });
+
+  it("prices the event room in its own currency, half day included", () => {
+    const evt: Booking = { ...base, plan: "event-room" };
+    const lek: Pricing = {
+      currency: "€",
+      plans: { "daily-pass": "15" },
+      eventRoom: {
+        currency: "Lek",
+        hour: "3,000",
+        halfDay: "10,000",
+        day: "18,000",
+      },
+    };
+    expect(t.priceLineFor(evt, lek)).toBe(
+      "The Event Room rate is 3,000 Lek per hour (minimum 3 hours), 10,000 Lek per half day or 18,000 Lek per day.",
+    );
+    // The room's currency never leaks into a pass.
+    expect(t.priceLineFor(base, lek)).toBe("The Day Pass rate is 15€ per day.");
+  });
+
+  it("falls back to the shared currency when the room has none", () => {
+    const evt: Booking = { ...base, plan: "event-room" };
+    expect(
+      t.priceLineFor(evt, {
+        ...NO_PRICES,
+        eventRoom: { halfDay: "90", day: "170" },
+      }),
+    ).toBe("The Event Room rate is 90€ per half day or 170€ per day.");
+    expect(
+      t.priceLineFor(evt, { ...NO_PRICES, eventRoom: { halfDay: "90" } }),
+    ).toBe("The Event Room rate is 90€ per half day.");
+    // A currency set with no amount still prices nothing.
+    expect(
+      t.priceLineFor(evt, { ...NO_PRICES, eventRoom: { currency: "Lek" } }),
+    ).toBeNull();
+  });
+
+  it("puts a space before a currency word, never before a symbol", () => {
+    const plans = { "daily-pass": "1,500" };
+    expect(t.priceLineFor(base, { currency: "Lek", plans })).toBe(
+      "The Day Pass rate is 1,500 Lek per day.",
+    );
+    expect(t.priceLineFor(base, { currency: "ALL", plans })).toBe(
+      "The Day Pass rate is 1,500 ALL per day.",
+    );
+    expect(t.priceLineFor(base, { currency: "$", plans })).toBe(
+      "The Day Pass rate is 1,500$ per day.",
+    );
+  });
 });
 
 describe("emailBodyText", () => {
