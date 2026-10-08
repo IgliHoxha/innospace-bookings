@@ -253,6 +253,126 @@ describe("list ordering", () => {
     expect(names((await page(1)).bookings)).toEqual(["Late", "Mid"]);
     expect(names((await page(2)).bookings)).toEqual(["Early", "Undated"]);
   });
+
+  describe("by column", () => {
+    type Query = NonNullable<Parameters<Db["queryBookings"]>[0]>;
+    const sorted = async (q: Query) =>
+      names((await db.queryBookings(q)).bookings);
+
+    // Mixed case on purpose: a byte-order sort would put "bea" after "Cy".
+    const seed = async () => {
+      const bea = await book({
+        fullName: "bea",
+        plan: "weekly-pass",
+        from: "2026-08-01",
+        note: "Zebra",
+      });
+      const ada = await book({
+        fullName: "Ada",
+        plan: "event-room",
+        from: "2026-09-01",
+        note: "apple",
+      });
+      await book({
+        fullName: "Cy",
+        plan: "daily-pass",
+        from: "2026-07-01",
+        note: "Mango",
+      });
+      await db.updateBookingStatus(bea.id, "confirmed");
+      await db.updateBookingStatus(ada.id, "cancelled");
+    };
+
+    it.each([
+      ["createdAt", ["bea", "Ada", "Cy"]],
+      ["guest", ["Ada", "bea", "Cy"]],
+      ["plan", ["Cy", "Ada", "bea"]],
+      ["dates", ["Cy", "bea", "Ada"]],
+      ["note", ["Ada", "Cy", "bea"]],
+      ["status", ["Ada", "bea", "Cy"]],
+    ] as const)("sorts by %s in both directions", async (sort, ascending) => {
+      await seed();
+      expect(await sorted({ sort, dir: "asc" })).toEqual(ascending);
+      expect(await sorted({ sort, dir: "desc" })).toEqual(
+        [...ascending].reverse(),
+      );
+    });
+
+    it("sorts descending when only the column is given", async () => {
+      await seed();
+      expect(await sorted({ sort: "guest" })).toEqual(["Cy", "bea", "Ada"]);
+    });
+
+    it.each(["guest", "plan", "dates", "note"] as const)(
+      "keeps a booking with no %s at the bottom in both directions",
+      async (sort) => {
+        await seed();
+        vi.setSystemTime(new Date(Date.UTC(2026, 5, 2)));
+        await db.createBooking({ email: "blank@example.com" });
+
+        for (const dir of ["asc", "desc"] as const) {
+          const list = await sorted({ sort, dir });
+          expect(list).toHaveLength(4);
+          expect(list.at(-1)).toBeUndefined();
+        }
+      },
+    );
+
+    it("keeps the default order among rows the column cannot separate", async () => {
+      await book({ fullName: "Mid", from: "2026-08-01" });
+      await book({ fullName: "Late old", from: "2026-09-01" });
+      await book({ fullName: "Late new", from: "2026-09-01" });
+      await book({ fullName: "Early", from: "2026-07-01" });
+
+      // One plan and one status throughout, so either direction leaves the ties.
+      const expected = ["Late new", "Late old", "Mid", "Early"];
+      for (const sort of ["plan", "status"] as const) {
+        expect(await sorted({ sort, dir: "asc" })).toEqual(expected);
+        expect(await sorted({ sort, dir: "desc" })).toEqual(expected);
+      }
+    });
+
+    it("falls back to the default order for a column it does not know", async () => {
+      await seed();
+      for (const sort of [
+        "email",
+        "constructor",
+        "createdAt; DROP TABLE bookings",
+      ]) {
+        expect(
+          await sorted({ sort: sort as Query["sort"], dir: "asc" }),
+        ).toEqual(["Ada", "bea", "Cy"]);
+      }
+      expect(await db.listBookings()).toHaveLength(3);
+    });
+
+    it("treats an unknown direction as descending", async () => {
+      await seed();
+      expect(
+        await sorted({ sort: "guest", dir: "ASC; --" as Query["dir"] }),
+      ).toEqual(["Cy", "bea", "Ada"]);
+    });
+
+    it("sorts within a filter and a search, across pages", async () => {
+      await seed();
+      await book({ fullName: "Dee", email: "dee@other.test" });
+      await book({ fullName: "abe" });
+
+      // "example.com" leaves Dee out; "new" leaves bea and Ada out.
+      expect(
+        await sorted({ sort: "guest", dir: "asc", search: "example.com" }),
+      ).toEqual(["abe", "Ada", "bea", "Cy"]);
+      expect(
+        await sorted({ sort: "guest", dir: "asc", filter: "new" }),
+      ).toEqual(["abe", "Cy", "Dee"]);
+
+      const page = (n: number) =>
+        sorted({ sort: "guest", dir: "asc", page: n, pageSize: 2 });
+      expect(await page(1)).toEqual(["abe", "Ada"]);
+      expect(await page(2)).toEqual(["bea", "Cy"]);
+      expect(await page(3)).toEqual(["Dee"]);
+    });
+  });
 });
 
 describe("queryBookings", () => {

@@ -14,6 +14,7 @@ import {
 } from "@/lib/cors";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { requireSession } from "@/lib/api-auth";
+import { parseSort } from "@/lib/sort";
 
 // This route touches the filesystem and node:crypto - force the Node runtime.
 export const runtime = "nodejs";
@@ -111,6 +112,7 @@ export async function GET(req: NextRequest) {
   const page = await queryBookings({
     filter,
     search: sp.get("q") ?? "",
+    ...parseSort(sp.get("sort"), sp.get("dir")),
     page: Number(sp.get("page")) || 1,
     pageSize: Number(sp.get("pageSize")) || 25,
   });

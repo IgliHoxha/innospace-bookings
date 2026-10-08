@@ -551,6 +551,38 @@ th {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+/* Sortable column header: a bare button that keeps the th's type. */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.th-sort:hover,
+.th-sort.active {
+  color: var(--ink);
+}
+.th-sort:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.th-sort-arrow {
+  font-size: 10px;
+  opacity: 0.45;
+}
+.th-sort.active .th-sort-arrow {
+  color: var(--brand-darker);
+  opacity: 1;
+}
 tr:last-child td {
   border-bottom: none;
 }

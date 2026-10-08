@@ -9,6 +9,7 @@ import {
 } from "@/lib/env-app";
 import DashboardClient from "./DashboardClient";
 import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
+import { INITIAL_SORT } from "@/lib/sort";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,8 @@ export default async function DashboardPage() {
 
   const initialData = await queryBookings({
     filter: INITIAL_FILTER,
+    sort: INITIAL_SORT.key,
+    dir: INITIAL_SORT.dir,
     page: 1,
     pageSize: PAGE_SIZE,
   });

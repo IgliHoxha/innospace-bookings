@@ -8,6 +8,12 @@ import { PAGE_SIZE, INITIAL_FILTER } from "@/lib/pagination";
 import { formatDateRangeShort, formatDateTime, todayYMD } from "@/lib/datetime";
 import { reviewRequestLink } from "@/lib/review";
 import {
+  INITIAL_SORT,
+  nextSort,
+  type BookingSort,
+  type SortState,
+} from "@/lib/sort";
+import {
   bookingTypeLabel,
   emailBodyText,
   emailSubject,
@@ -20,6 +26,18 @@ const FILTERS: { key: "all" | BookingStatus; label: string }[] = [
   { key: "confirmed", label: "Confirmed" },
   { key: "cancelled", label: "Cancelled" },
   { key: "deleted", label: "Deleted" },
+];
+
+// Email and Action hold controls, not a value, so they carry no sort key.
+const COLUMNS: { label: string; sort?: BookingSort }[] = [
+  { label: "Created at", sort: "createdAt" },
+  { label: "Guest", sort: "guest" },
+  { label: "Plan", sort: "plan" },
+  { label: "Dates", sort: "dates" },
+  { label: "Notes", sort: "note" },
+  { label: "Status", sort: "status" },
+  { label: "Email" },
+  { label: "Action" },
 ];
 
 export default function DashboardClient({
@@ -38,6 +56,7 @@ export default function DashboardClient({
   const [filter, setFilter] = useState<"all" | BookingStatus>(INITIAL_FILTER);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [sort, setSort] = useState<SortState>(INITIAL_SORT);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -76,6 +95,8 @@ export default function DashboardClient({
     const params = new URLSearchParams({
       status: filter,
       q: debouncedQuery,
+      sort: sort.key,
+      dir: sort.dir,
       page: String(page),
       pageSize: String(PAGE_SIZE),
     });
@@ -93,7 +114,7 @@ export default function DashboardClient({
     } finally {
       if (id === reqId.current) setLoading(false);
     }
-  }, [filter, debouncedQuery, page]);
+  }, [filter, debouncedQuery, sort, page]);
 
   // Debounce the search box so we don't hit the API on every keystroke.
   useEffect(() => {
@@ -101,10 +122,10 @@ export default function DashboardClient({
     return () => clearTimeout(t);
   }, [query]);
 
-  // Any filter/search change returns to the first page.
+  // Any filter/search/sort change returns to the first page.
   useEffect(() => {
     setPage(1);
-  }, [filter, debouncedQuery]);
+  }, [filter, debouncedQuery, sort]);
 
   // Skip the first render - the server already supplied page 1.
   const didMount = useRef(false);
@@ -178,7 +199,7 @@ export default function DashboardClient({
   // Reset the permanent-delete selection whenever the view changes.
   useEffect(() => {
     setSelected(new Set());
-  }, [filter, debouncedQuery, page]);
+  }, [filter, debouncedQuery, sort, page]);
 
   // Close the user menu on any outside click or Escape.
   useEffect(() => {
@@ -339,14 +360,19 @@ export default function DashboardClient({
                       />
                     </th>
                   )}
-                  <th>Created at</th>
-                  <th>Guest</th>
-                  <th>Plan</th>
-                  <th>Dates</th>
-                  <th>Notes</th>
-                  <th>Status</th>
-                  <th>Email</th>
-                  <th>Action</th>
+                  {COLUMNS.map((c) =>
+                    c.sort ? (
+                      <SortHeader
+                        key={c.label}
+                        label={c.label}
+                        column={c.sort}
+                        sort={sort}
+                        onSort={(key) => setSort((s) => nextSort(s, key))}
+                      />
+                    ) : (
+                      <th key={c.label}>{c.label}</th>
+                    ),
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -693,6 +719,38 @@ function Stat({
       <div className="num">{num}</div>
       <div className="label">{label}</div>
     </button>
+  );
+}
+
+/** A column header that sorts the list: a second click reverses the direction. */
+function SortHeader({
+  label,
+  column,
+  sort,
+  onSort,
+}: {
+  label: string;
+  column: BookingSort;
+  sort: SortState;
+  onSort: (key: BookingSort) => void;
+}) {
+  const active = sort.key === column;
+  const ascending = active && sort.dir === "asc";
+  return (
+    <th
+      aria-sort={active ? (ascending ? "ascending" : "descending") : undefined}
+    >
+      <button
+        type="button"
+        className={`th-sort ${active ? "active" : ""}`}
+        onClick={() => onSort(column)}
+      >
+        {label}
+        <span className="th-sort-arrow" aria-hidden="true">
+          {active ? (ascending ? "▲" : "▼") : "↕"}
+        </span>
+      </button>
+    </th>
   );
 }
 

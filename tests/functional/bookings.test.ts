@@ -137,6 +137,78 @@ describe("GET /api/bookings (protected)", () => {
     }
   });
 
+  describe("sort and dir params", () => {
+    const names = async (qs: string) => {
+      const res = await route.GET(
+        makeRequest(`/api/bookings?${qs}`, { token: sessionToken() }),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { bookings: { fullName: string }[] };
+      return body.bookings.map((b) => b.fullName);
+    };
+
+    // Mixed case on purpose: a byte-order sort would put "bea" after "Cy".
+    beforeEach(async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const rows = [
+        { fullName: "bea", plan: "weekly-pass", from: "2026-08-01", note: "Z" },
+        { fullName: "Ada", plan: "event-room", from: "2026-09-01", note: "a" },
+        { fullName: "Cy", plan: "daily-pass", from: "2026-07-01", note: "M" },
+      ] as const;
+      const ids: string[] = [];
+      for (const [hour, row] of rows.entries()) {
+        vi.setSystemTime(new Date(Date.UTC(2026, 5, 1, hour)));
+        ids.push((await db.createBooking(row)).id);
+      }
+      await db.updateBookingStatus(ids[0], "confirmed");
+      await db.updateBookingStatus(ids[1], "cancelled");
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it.each([
+      ["createdAt", ["bea", "Ada", "Cy"]],
+      ["guest", ["Ada", "bea", "Cy"]],
+      ["plan", ["Cy", "Ada", "bea"]],
+      ["dates", ["Cy", "bea", "Ada"]],
+      ["note", ["Ada", "Cy", "bea"]],
+      ["status", ["Ada", "bea", "Cy"]],
+    ] as const)("sorts by %s in both directions", async (sort, ascending) => {
+      expect(await names(`sort=${sort}&dir=asc`)).toEqual(ascending);
+      expect(await names(`sort=${sort}&dir=desc`)).toEqual(
+        [...ascending].reverse(),
+      );
+    });
+
+    it("sorts inside a status filter, a search and a page", async () => {
+      expect(await names("status=new&sort=guest&dir=asc")).toEqual(["Cy"]);
+      expect(await names("q=a&sort=guest&dir=desc&page=2&pageSize=1")).toEqual([
+        "bea",
+      ]);
+    });
+
+    it("ignores an unknown column or direction instead of failing", async () => {
+      const byDate = ["Ada", "bea", "Cy"];
+      expect(await names("sort=email&dir=asc")).toEqual(byDate);
+      expect(await names("sort=constructor")).toEqual(byDate);
+      expect(
+        await names(
+          `sort=${encodeURIComponent("createdAt; DROP TABLE bookings")}`,
+        ),
+      ).toEqual(byDate);
+      expect(await names("sort=guest&dir=sideways")).toEqual([
+        "Cy",
+        "bea",
+        "Ada",
+      ]);
+      expect((await db.queryBookings()).total).toBe(3);
+    });
+
+    it("401s without a session, whatever the sort", async () => {
+      const res = await route.GET(makeRequest("/api/bookings?sort=guest"));
+      expect(res.status).toBe(401);
+    });
+  });
+
   it("falls back to the 'all' filter for an unknown status param", async () => {
     await db.createBooking({ fullName: "Ada" });
     const res = await route.GET(

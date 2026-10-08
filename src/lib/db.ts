@@ -12,6 +12,7 @@ import {
   type BookingStatus,
 } from "./types";
 import { optionalEnv } from "./env-app";
+import { BOOKING_SORTS, type BookingSort, type SortDir } from "./sort";
 
 /** Where the SQLite file lives. Read lazily so tests can point it at a temp file. */
 function dbFile(): string {
@@ -167,12 +168,30 @@ function findBooking(id: string): Booking | null {
   return row ? fromRow(row) : null;
 }
 
-// Every list's order: the latest booked day on top, a booking with no date at
+// The default order: the latest booked day on top, a booking with no date at
 // the bottom, and the newest request first among bookings for the same day.
-const LATEST_FIRST = `ORDER BY "from" DESC NULLS LAST, createdAt DESC`;
+const LATEST_FIRST = `"from" DESC NULLS LAST, createdAt DESC`;
+
+// What each sortable column orders by. Only these fixed strings reach the SQL
+// text: a sort key picks one and is never interpolated itself.
+const SORT_SQL: Record<BookingSort, string> = {
+  createdAt: "createdAt",
+  guest: "fullName COLLATE NOCASE",
+  plan: "plan",
+  dates: `"from"`,
+  note: "note COLLATE NOCASE",
+  status: "status",
+};
+
+/** A column sort: blanks sink in either direction, and ties keep the default order. */
+function orderBy(sort?: BookingSort, dir?: SortDir): string {
+  if (!sort || !BOOKING_SORTS.includes(sort)) return `ORDER BY ${LATEST_FIRST}`;
+  const way = dir === "asc" ? "ASC" : "DESC";
+  return `ORDER BY ${SORT_SQL[sort]} ${way} NULLS LAST, ${LATEST_FIRST}`;
+}
 
 export async function listBookings(): Promise<Booking[]> {
-  const rows = prep(`SELECT * FROM bookings ${LATEST_FIRST}`).all() as Row[];
+  const rows = prep(`SELECT * FROM bookings ${orderBy()}`).all() as Row[];
   return rows.map(fromRow);
 }
 
@@ -195,6 +214,8 @@ export interface BookingPage {
 export interface BookingQuery {
   filter?: "all" | BookingStatus;
   search?: string;
+  sort?: BookingSort; // unset: latest booked day first
+  dir?: SortDir;
   page?: number;
   pageSize?: number;
 }
@@ -220,7 +241,7 @@ function bookingCounts(): BookingCounts {
   };
 }
 
-/** Paginated, filtered, searchable list for the dashboard. */
+/** Paginated, filtered, searchable, sortable list for the dashboard. */
 export async function queryBookings(
   q: BookingQuery = {},
 ): Promise<BookingPage> {
@@ -260,7 +281,7 @@ export async function queryBookings(
 
   const rows = db
     .prepare(
-      `SELECT * FROM bookings ${whereSql} ${LATEST_FIRST} LIMIT ? OFFSET ?`,
+      `SELECT * FROM bookings ${whereSql} ${orderBy(q.sort, q.dir)} LIMIT ? OFFSET ?`,
     )
     .all(...params, pageSize, (page - 1) * pageSize) as Row[];
 
