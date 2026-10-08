@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOOKING_PLANS, BOOKING_STATUSES } from "@/lib/types";
+import { BOOKING_FILTERS, BOOKING_PLANS, BOOKING_STATUSES } from "@/lib/types";
 
 // These arrays are the single source of truth for the DB CHECK constraints and
 // the API validators, so pin their membership.
@@ -11,6 +11,10 @@ describe("booking enums", () => {
       "cancelled",
       "deleted",
     ]);
+  });
+
+  it("offers every status as a list filter, after 'all'", () => {
+    expect(BOOKING_FILTERS).toEqual(["all", ...BOOKING_STATUSES]);
   });
 
   it("lists the known plan slugs", () => {

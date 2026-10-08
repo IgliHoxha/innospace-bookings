@@ -9,6 +9,12 @@ export const BOOKING_STATUSES = [
 
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
+// What the dashboard list can be narrowed to: one status, or "all" (every
+// booking that is not deleted).
+export const BOOKING_FILTERS = ["all", ...BOOKING_STATUSES] as const;
+
+export type BookingFilter = (typeof BOOKING_FILTERS)[number];
+
 // Single source of truth for booking plans (the slugs the website sends).
 export const BOOKING_PLANS = [
   "daily-pass",

@@ -7,6 +7,7 @@ import {
   BOOKING_PLANS,
   BOOKING_STATUSES,
   type Booking,
+  type BookingFilter,
   type BookingInput,
   type BookingPlan,
   type BookingStatus,
@@ -212,7 +213,7 @@ export interface BookingPage {
 }
 
 export interface BookingQuery {
-  filter?: "all" | BookingStatus;
+  filter?: BookingFilter;
   search?: string;
   sort?: BookingSort; // unset: latest booked day first
   dir?: SortDir;

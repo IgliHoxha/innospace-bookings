@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createBooking, queryBookings, deleteBookings } from "@/lib/db";
 import {
+  BOOKING_FILTERS,
   BOOKING_PLANS,
-  BOOKING_STATUSES,
   type BookingInput,
   type BookingPlan,
-  type BookingStatus,
 } from "@/lib/types";
 import {
   corsHeaders,
@@ -14,6 +13,7 @@ import {
 } from "@/lib/cors";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { requireSession } from "@/lib/api-auth";
+import { jsonError } from "@/lib/api-response";
 import { parseSort } from "@/lib/sort";
 
 // This route touches the filesystem and node:crypto - force the Node runtime.
@@ -35,10 +35,7 @@ export async function POST(req: NextRequest) {
   // Server-side origin gate: reject browser requests from origins not on the
   // ALLOWED_ORIGINS list. No-op while that list is "*" (the default).
   if (!isRequestOriginAllowed(req.headers)) {
-    return NextResponse.json(
-      { ok: false, error: "Forbidden." },
-      { status: 403, headers: cors },
-    );
+    return jsonError("Forbidden.", 403, cors);
   }
 
   try {
@@ -58,28 +55,19 @@ export async function POST(req: NextRequest) {
       req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for"),
     );
     if (!turnstile.ok) {
-      return NextResponse.json(
-        { ok: false, error: "Verification failed. Please try again." },
-        { status: 403, headers: cors },
-      );
+      return jsonError("Verification failed. Please try again.", 403, cors);
     }
 
     const input = normalize(body);
 
     if (!input.fullName && !input.email) {
-      return NextResponse.json(
-        { ok: false, error: "Missing booking details (name or email)." },
-        { status: 400, headers: cors },
-      );
+      return jsonError("Missing booking details (name or email).", 400, cors);
     }
 
     // A present-but-unknown plan is an error; a missing one defaults (see normalize).
     const planRaw = typeof body.plan === "string" ? body.plan.trim() : "";
     if (planRaw && !BOOKING_PLANS.includes(planRaw as BookingPlan)) {
-      return NextResponse.json(
-        { ok: false, error: `Unknown plan: ${planRaw}.` },
-        { status: 400, headers: cors },
-      );
+      return jsonError(`Unknown plan: ${planRaw}.`, 400, cors);
     }
 
     const booking = await createBooking(input);
@@ -90,14 +78,9 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     console.error("[bookings] POST failed:", err);
-    return NextResponse.json(
-      { ok: false, error: "Invalid request." },
-      { status: 400, headers: cors },
-    );
+    return jsonError("Invalid request.", 400, cors);
   }
 }
-
-const VALID_FILTERS: readonly string[] = ["all", ...BOOKING_STATUSES];
 
 /** Protected: the dashboard fetches a page of the list. Requires a session. */
 export async function GET(req: NextRequest) {
@@ -105,12 +88,10 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   const sp = req.nextUrl.searchParams;
-  const filterParam = sp.get("status") ?? "all";
-  const filter = (VALID_FILTERS.includes(filterParam) ? filterParam : "all") as
-    "all" | BookingStatus;
+  const status = sp.get("status");
 
   const page = await queryBookings({
-    filter,
+    filter: BOOKING_FILTERS.find((f) => f === status) ?? "all",
     search: sp.get("q") ?? "",
     ...parseSort(sp.get("sort"), sp.get("dir")),
     page: Number(sp.get("page")) || 1,
@@ -130,10 +111,7 @@ export async function DELETE(req: NextRequest) {
 
   const { ids } = (await req.json().catch(() => ({}))) as { ids?: unknown };
   if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
-    return NextResponse.json(
-      { ok: false, error: "Expected { ids: string[] }." },
-      { status: 400 },
-    );
+    return jsonError("Expected { ids: string[] }.", 400);
   }
 
   const removed = await deleteBookings(ids as string[]);

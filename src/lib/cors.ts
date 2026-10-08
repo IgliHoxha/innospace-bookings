@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import type { NextResponse } from "next/server";
+import { jsonError } from "./api-response";
 import { optionalEnv } from "./env-app";
 
 /** ALLOWED_ORIGINS parsed; defaults to "*" (allow any) when unset (optional flag). */
@@ -71,8 +72,7 @@ export function isRequestOriginAllowed(headers: Headers): boolean {
  * ALLOWED_ORIGINS is unset ("*").
  */
 export function requireAllowedOrigin(headers: Headers): NextResponse | null {
-  if (isRequestOriginAllowed(headers)) return null;
-  return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  return isRequestOriginAllowed(headers) ? null : jsonError("Forbidden", 403);
 }
 
 /** Resolve the CORS headers for a given request origin against ALLOWED_ORIGINS. */

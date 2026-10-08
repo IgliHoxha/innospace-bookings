@@ -12,6 +12,7 @@ import {
   registerSuccess,
 } from "@/lib/rate-limit";
 import { requireSession } from "@/lib/api-auth";
+import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
 
 export const runtime = "nodejs";
@@ -26,26 +27,17 @@ function formatWait(seconds: number): string {
 }
 
 function bannedResponse() {
-  return NextResponse.json(
-    {
-      ok: false,
-      error:
-        "Access blocked due to repeated failed logins. Contact the administrator.",
-    },
-    { status: 403 },
+  return jsonError(
+    "Access blocked due to repeated failed logins. Contact the administrator.",
+    403,
   );
 }
 
 function lockedResponse(retryAfterSeconds: number) {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: `Too many failed attempts. Try again in ${formatWait(retryAfterSeconds)}.`,
-    },
-    {
-      status: 429,
-      headers: { "Retry-After": String(retryAfterSeconds) },
-    },
+  return jsonError(
+    `Too many failed attempts. Try again in ${formatWait(retryAfterSeconds)}.`,
+    429,
+    { "Retry-After": String(retryAfterSeconds) },
   );
 }
 
@@ -69,10 +61,7 @@ export async function POST(req: NextRequest) {
     const status = registerFailure(key);
     if (status.banned) return bannedResponse();
     if (status.blocked) return lockedResponse(status.retryAfterSeconds);
-    return NextResponse.json(
-      { ok: false, error: "Incorrect username or password." },
-      { status: 401 },
-    );
+    return jsonError("Incorrect username or password.", 401);
   }
 
   registerSuccess(key); // clear the failure/lockout history on success

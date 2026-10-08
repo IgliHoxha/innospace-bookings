@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { setReviewAsked, updateBookingStatus } from "@/lib/db";
 import { sendCustomerStatusEmail } from "@/lib/email";
 import { requireSession } from "@/lib/api-auth";
+import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
 import { BOOKING_STATUSES, type BookingStatus } from "@/lib/types";
 
@@ -31,35 +32,19 @@ export async function PATCH(
   // The review marker is its own update: it never changes status or sends email.
   if (status === undefined && reviewAsked !== undefined) {
     if (typeof reviewAsked !== "boolean") {
-      return NextResponse.json(
-        { ok: false, error: "Invalid reviewAsked." },
-        { status: 400 },
-      );
+      return jsonError("Invalid reviewAsked.", 400);
     }
     const marked = await setReviewAsked(id, reviewAsked);
-    if (!marked) {
-      return NextResponse.json(
-        { ok: false, error: "Not found." },
-        { status: 404 },
-      );
-    }
+    if (!marked) return jsonError("Not found.", 404);
     return NextResponse.json({ ok: true, booking: marked });
   }
 
   if (!status || !BOOKING_STATUSES.includes(status)) {
-    return NextResponse.json(
-      { ok: false, error: "Invalid status." },
-      { status: 400 },
-    );
+    return jsonError("Invalid status.", 400);
   }
 
   const booking = await updateBookingStatus(id, status);
-  if (!booking) {
-    return NextResponse.json(
-      { ok: false, error: "Not found." },
-      { status: 404 },
-    );
-  }
+  if (!booking) return jsonError("Not found.", 404);
 
   // Notify the customer on confirm/cancel. Never block the response on email.
   if (status === "confirmed" || status === "cancelled") {
