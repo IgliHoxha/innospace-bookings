@@ -168,6 +168,24 @@ describe("POST /api/bookings (date rules)", () => {
     expect(fine.status).toBe(201);
   });
 
+  it("keeps a room booking's times for the dashboard to show", async () => {
+    const res = await post({
+      ...good,
+      plan: "event-room",
+      from: "2026-10-13T11:00",
+      to: "2026-10-13T14:00",
+    });
+    expect(res.status).toBe(201);
+
+    const list = await route.GET(
+      makeRequest("/api/bookings", { token: sessionToken() }),
+    );
+    const [stored] = (await list.json()).bookings;
+    expect(stored.plan).toBe("event-room");
+    expect(stored.from).toBe("2026-10-13T11:00");
+    expect(stored.to).toBe("2026-10-13T14:00");
+  });
+
   it("answers a refused request with the CORS headers", async () => {
     const res = await post(
       { ...good, from: "2026-10-17", to: "2026-10-17" },

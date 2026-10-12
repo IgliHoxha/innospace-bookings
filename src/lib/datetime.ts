@@ -23,13 +23,21 @@ function parseYMD(value: string | undefined) {
   return m ? { y: +m[1], m: +m[2], d: +m[3] } : null;
 }
 
+/** The "HH:mm" a booked value carries (the event room's), or "" for a bare date. */
+function timeOf(value: string | undefined): string {
+  return /^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/.exec(value ?? "")?.[1] ?? "";
+}
+
 /** Compact DD/MM/YY for the dashboard table, e.g. "02/07/26". */
 export function formatDMYShort(value: string | undefined): string {
   const p = parseYMD(value);
   return p ? `${pad2(p.d)}/${pad2(p.m)}/${String(p.y).slice(2)}` : "";
 }
 
-/** Compact date range for the table: "30/06/26 → 02/07/26" (or a single date). */
+/**
+ * Compact date range for the table: "30/06/26 → 02/07/26" (or a single date).
+ * A value that carries a time keeps it: "12/10/26 11:00 → 14:00".
+ */
 export function formatDateRangeShort(
   from: string | undefined,
   to: string | undefined,
@@ -37,14 +45,21 @@ export function formatDateRangeShort(
   const f = formatDMYShort(from);
   const t = formatDMYShort(to);
   if (!f && !t) return "-";
-  if (!f) return t;
-  if (!t || f === t) return f;
-  return `${f} → ${t}`;
+  const ft = timeOf(from);
+  const tt = timeOf(to);
+  const stamp = (date: string, time: string) =>
+    time ? `${date} ${time}` : date;
+  if (!f) return stamp(t, tt);
+  if (!t || f === t) {
+    return ft && tt && ft !== tt ? `${f} ${ft} → ${tt}` : stamp(f, ft);
+  }
+  return `${stamp(f, ft)} → ${stamp(t, tt)}`;
 }
 
 /**
  * Spelled-out date range for email copy, collapsing the shared parts:
  * "1-3 July 2026", "30 July - 2 August 2026", "1 July 2026" for a single day.
+ * A value that carries a time keeps it: "12 October 2026, 11:00-14:00".
  * Returns null when the start date is missing or malformed.
  */
 export function formatDateRangeLong(
@@ -54,8 +69,18 @@ export function formatDateRangeLong(
   const f = parseYMD(from);
   if (!f) return null;
   const t = parseYMD(to);
+  const ft = timeOf(from);
+  const tt = timeOf(to);
+  const day = (p: { y: number; m: number; d: number }) =>
+    `${p.d} ${MONTHS[p.m - 1]} ${p.y}`;
   if (!t || (t.y === f.y && t.m === f.m && t.d === f.d)) {
-    return `${f.d} ${MONTHS[f.m - 1]} ${f.y}`;
+    if (!ft) return day(f);
+    return tt && tt !== ft ? `${day(f)}, ${ft}-${tt}` : `${day(f)}, ${ft}`;
+  }
+  // Times do not survive the collapsing below, so a timed range is spelled in full.
+  if (ft || tt) {
+    const at = (time: string) => (time ? `, ${time}` : "");
+    return `${day(f)}${at(ft)} - ${day(t)}${at(tt)}`;
   }
   if (t.y === f.y && t.m === f.m)
     return `${f.d}-${t.d} ${MONTHS[f.m - 1]} ${f.y}`;

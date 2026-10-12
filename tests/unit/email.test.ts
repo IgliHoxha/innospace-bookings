@@ -179,6 +179,24 @@ describe("sendCustomerStatusEmail", () => {
     expect(htmlOf(1)).toContain("The Day Pass rate is 15€ per day.");
     expect(htmlOf(1)).not.toContain("Lek");
   });
+
+  it("tells the guest the hours of an event room booking", async () => {
+    await email.sendCustomerStatusEmail(
+      {
+        ...BOOKING,
+        plan: "event-room",
+        from: "2026-10-12T11:00",
+        to: "2026-10-12T14:00",
+      },
+      "confirmed",
+    );
+    expect(send.mock.calls[0][0].subject).toBe(
+      "Re: Event Room Booking Confirmation for 12 October 2026, 11:00-14:00",
+    );
+    expect(htmlOf()).toContain(
+      "the event room is available for 12 October 2026, 11:00-14:00.",
+    );
+  });
 });
 
 describe("linkified body", () => {

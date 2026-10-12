@@ -42,6 +42,42 @@ describe("formatDateRangeShort", () => {
       `30/06/26 ${ARROW} 02/07/26`,
     );
   });
+
+  it("keeps the times of a room booking, once when it is one day", () => {
+    expect(formatDateRangeShort("2026-10-12T11:00", "2026-10-12T14:00")).toBe(
+      `12/10/26 11:00 ${ARROW} 14:00`,
+    );
+    expect(formatDateRangeShort("2026-10-12T09:00", "2026-10-13T17:00")).toBe(
+      `12/10/26 09:00 ${ARROW} 13/10/26 17:00`,
+    );
+  });
+
+  it("shows the one time it has", () => {
+    expect(formatDateRangeShort("2026-10-12T11:00", undefined)).toBe(
+      "12/10/26 11:00",
+    );
+    expect(formatDateRangeShort(undefined, "2026-10-12T14:00")).toBe(
+      "12/10/26 14:00",
+    );
+    expect(formatDateRangeShort("2026-10-12T11:00", "2026-10-12T11:00")).toBe(
+      "12/10/26 11:00",
+    );
+    expect(formatDateRangeShort("2026-10-12T11:00", "2026-10-12")).toBe(
+      "12/10/26 11:00",
+    );
+    expect(formatDateRangeShort("2026-10-12", "2026-10-13T14:00")).toBe(
+      `12/10/26 ${ARROW} 13/10/26 14:00`,
+    );
+  });
+
+  it("drops the seconds and reads no time into a malformed value", () => {
+    expect(
+      formatDateRangeShort("2026-10-12T11:00:30", "2026-10-12T14:00:00.000"),
+    ).toBe(`12/10/26 11:00 ${ARROW} 14:00`);
+    expect(formatDateRangeShort("2026-10-12 11:00", "2026-10-12")).toBe(
+      "12/10/26",
+    );
+  });
 });
 
 describe("formatDateRangeLong", () => {
@@ -70,6 +106,42 @@ describe("formatDateRangeLong", () => {
   it("spells out a cross-year range", () => {
     expect(formatDateRangeLong("2025-12-30", "2026-01-02")).toBe(
       "30 December 2025 - 2 January 2026",
+    );
+  });
+
+  it("adds the hours of a room booking on one day", () => {
+    expect(formatDateRangeLong("2026-10-12T11:00", "2026-10-12T14:00")).toBe(
+      "12 October 2026, 11:00-14:00",
+    );
+    expect(formatDateRangeLong("2026-10-12T09:00", "2026-10-12T13:00:00")).toBe(
+      "12 October 2026, 09:00-13:00",
+    );
+  });
+
+  it("shows a lone start time", () => {
+    expect(formatDateRangeLong("2026-10-12T11:00", undefined)).toBe(
+      "12 October 2026, 11:00",
+    );
+    expect(formatDateRangeLong("2026-10-12T11:00", "2026-10-12")).toBe(
+      "12 October 2026, 11:00",
+    );
+    expect(formatDateRangeLong("2026-10-12T11:00", "2026-10-12T11:00")).toBe(
+      "12 October 2026, 11:00",
+    );
+  });
+
+  it("spells a timed range over several days in full", () => {
+    expect(formatDateRangeLong("2026-10-12T09:00", "2026-10-13T17:00")).toBe(
+      "12 October 2026, 09:00 - 13 October 2026, 17:00",
+    );
+    expect(formatDateRangeLong("2026-10-12", "2026-10-13T17:00")).toBe(
+      "12 October 2026 - 13 October 2026, 17:00",
+    );
+  });
+
+  it("leaves a full day, which carries no time, as a date", () => {
+    expect(formatDateRangeLong("2026-10-12", "2026-10-12")).toBe(
+      "12 October 2026",
     );
   });
 });

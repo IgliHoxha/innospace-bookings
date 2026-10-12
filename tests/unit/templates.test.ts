@@ -29,6 +29,14 @@ const FULL: ContactInfo = {
 
 const NO_PRICES: Pricing = { currency: "€", plans: {} };
 
+// An hourly room booking as the website sends it: both ends carry a time.
+const ROOM: Booking = {
+  ...base,
+  plan: "event-room",
+  from: "2026-10-12T11:00",
+  to: "2026-10-12T14:00",
+};
+
 describe("datesText", () => {
   it("falls back when the start date is missing or malformed", () => {
     expect(t.datesText({ ...base, from: undefined })).toBe(
@@ -42,6 +50,37 @@ describe("datesText", () => {
   it("renders the booked range", () => {
     expect(t.datesText({ ...base, from: "2026-07-01", to: "2026-07-03" })).toBe(
       "1-3 July 2026",
+    );
+  });
+
+  it("includes the hours of an event room booking", () => {
+    expect(t.datesText(ROOM)).toBe("12 October 2026, 11:00-14:00");
+  });
+});
+
+describe("an event room booking's hours in the email", () => {
+  it("reach the subject and the preheader", () => {
+    expect(t.emailSubject("confirmed", ROOM)).toBe(
+      "Re: Event Room Booking Confirmation for 12 October 2026, 11:00-14:00",
+    );
+    expect(t.emailPreheader(ROOM, "confirmed", MINIMAL)).toContain(
+      "Event Room for 12 October 2026, 11:00-14:00 at InnoSpace Tirana.",
+    );
+    expect(t.emailPreheader(ROOM, "cancelled", MINIMAL)).toContain(
+      "Event Room for 12 October 2026, 11:00-14:00 at InnoSpace Tirana.",
+    );
+  });
+
+  it("reach the confirmation body", () => {
+    expect(t.emailBodyText(ROOM, "confirmed", NO_PRICES, MINIMAL)).toContain(
+      "We confirm that the event room is available for 12 October 2026, 11:00-14:00.",
+    );
+  });
+
+  it("stay out of a full-day booking, which has none", () => {
+    const fullDay = { ...ROOM, from: "2026-10-12", to: "2026-10-12" };
+    expect(t.emailSubject("confirmed", fullDay)).toBe(
+      "Re: Event Room Booking Confirmation for 12 October 2026",
     );
   });
 });
