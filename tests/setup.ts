@@ -23,12 +23,14 @@ for (const [key, value] of Object.entries(REQUIRED_BASELINE)) {
 }
 
 // Optional vars stay OFF for a deterministic suite (email skipped, Turnstile
-// skipped, CORS wildcard, contact footer minimal). DATA_FILE is set per-test by
+// skipped, no Telegram alert, CORS wildcard, contact footer minimal). DATA_FILE is set per-test by
 // resetApp() to a temp file.
 for (const key of [
   "RESEND_API_KEY",
   "APP_BASE_URL",
   "TURNSTILE_SECRET_KEY",
+  "TELEGRAM_BOT_TOKEN",
+  "TELEGRAM_CHAT_ID",
   "ALLOWED_ORIGINS",
   "DATA_FILE",
   "PRICE_DAILY_PASS",

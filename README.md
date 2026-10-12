@@ -9,6 +9,7 @@ booking form. It:
    confirm/cancel bookings.
 4. **Emails** the customer a branded confirm/cancel notice (via
    [Resend](https://resend.com)) when you action a booking.
+5. **Alerts you on Telegram** the moment a booking arrives (optional).
 
 - **Repo:** <https://github.com/IgliHoxha/innospace-bookings>
 - **Stack:** Next.js 15 (App Router) · React 19 · TypeScript · better-sqlite3 · Resend
@@ -75,6 +76,7 @@ misconfigured deploy fails loudly instead of silently running on a default.
 | `AUTH_SECRET` | yes | Long random string signing the login cookie (`openssl rand -hex 32`). |
 | `ALLOWED_ORIGINS` | no | Comma-separated origins allowed to POST and to call mutating routes. Unset means any. |
 | `TURNSTILE_SECRET_KEY` | no | Cloudflare Turnstile secret. If empty, verification is skipped. |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | no | Bot token and chat for the new-booking alert (see [Telegram alert](#telegram-alert)). With either one blank, no alert is sent. |
 | `DATA_FILE` | no | SQLite path. Defaults to `./data/bookings.db`. |
 | `PRICE_CURRENCY` | yes | Currency used in the rate lines. A symbol (`€`) is glued to the amount, a word (`Lek`) follows it after a space. |
 | `PRICE_EVENT_ROOM_CURRENCY` | no | Currency for the Event Room only, when it differs. Defaults to `PRICE_CURRENCY`. |
@@ -122,7 +124,8 @@ The dashboard sits behind a branded sign-in (rate-limited per IP):
 ## API
 
 - `POST /api/bookings`: public; the website posts a booking here (origin-gated to
-  `ALLOWED_ORIGINS`, honeypot + Turnstile). `201` on success.
+  `ALLOWED_ORIGINS`, honeypot + Turnstile). `201` on success, after the
+  Telegram alert when one is configured.
 - `GET /api/bookings`: protected; a filtered, searchable, paginated page.
 - `DELETE /api/bookings`: protected; permanently removes soft-deleted rows.
 - `PATCH /api/bookings/:id`: protected; `{ status, emailBody? }`. On
@@ -168,6 +171,28 @@ The customer receives a branded message (the confirmation for a monthly pass):
 <p align="center">
   <img src="docs/img/email-confirm.png" alt="The branded confirmation email a customer receives: Innospace Tirana logo, a Booking confirmed heading, and the confirmation text including the monthly pass dates and rate" width="560">
 </p>
+
+---
+
+## Telegram alert
+
+With `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set, every stored booking sends
+one Telegram message to that chat: a labelled line each for the full name,
+email, phone, dates, booking type and notes (a line is left out when the guest
+gave nothing for it), then a link to the dashboard. It is a plain call to the
+Bot API ([`src/lib/telegram.ts`](src/lib/telegram.ts)), which is free and needs
+no library.
+
+1. Message `@BotFather`, send `/newbot` and copy the token.
+2. Open the new bot and press **Start**: a bot cannot write to you before that.
+3. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy
+   `message.chat.id`. To alert several people, add the bot to a group and use
+   the group's id instead.
+4. `fly secrets set TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...`
+
+The alert never costs a booking: if Telegram refuses the message or does not
+answer within three seconds, the reason is logged and the guest still gets
+their `201`. Honeypot submissions and refused requests send nothing.
 
 ---
 
@@ -244,6 +269,7 @@ src/
   lib/
     db.ts        SQLite storage + users/auth
     email.ts     Resend customer emails
+    telegram.ts  new-booking alert to the owner
     templates.ts email bodies + pricing (shared with the UI)
     review.ts    review request copy and rules (shared with the UI)
     review-auto.ts  the automatic review email run

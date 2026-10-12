@@ -12,3 +12,7 @@ export const ADMIN_PASS = "fixture-admin-pass";
 /** Dummy HMAC signing secrets (AUTH_SECRET); the two must differ. */
 export const SIGNING = "fixture-signing-a";
 export const SIGNING_ALT = "fixture-signing-b";
+
+/** Dummy Telegram bot token (TELEGRAM_BOT_TOKEN) and the chat it alerts. */
+export const BOT_TOKEN = "fixture-bot-token";
+export const BOT_CHAT = "-1001234";

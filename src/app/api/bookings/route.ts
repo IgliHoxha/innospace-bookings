@@ -12,6 +12,7 @@ import {
   requireAllowedOrigin,
 } from "@/lib/cors";
 import { verifyTurnstile } from "@/lib/turnstile";
+import { notifyNewBooking } from "@/lib/telegram";
 import { requireSession } from "@/lib/api-auth";
 import { jsonError } from "@/lib/api-response";
 import { bookingDatesError } from "@/lib/booking-dates";
@@ -76,6 +77,9 @@ export async function POST(req: NextRequest) {
     if (datesError) return jsonError(datesError, 400, cors);
 
     const booking = await createBooking(input);
+
+    // Never throws and gives up after a few seconds, so it cannot cost the 201.
+    await notifyNewBooking(booking);
 
     return NextResponse.json(
       { ok: true, id: booking.id },
