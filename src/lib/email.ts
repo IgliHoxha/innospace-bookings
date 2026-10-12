@@ -184,17 +184,20 @@ function shell(opts: {
   </div>`;
 }
 
-// Customer confirm/cancel email; customBody (dashboard edit) overrides the template.
+/**
+ * Customer confirm/cancel email; customBody (dashboard edit) overrides the
+ * template. Resolves true only when Resend accepted it.
+ */
 export async function sendCustomerStatusEmail(
   booking: Booking,
   status: EmailStatus,
   customBody?: string,
-): Promise<void> {
+): Promise<boolean> {
   const resend = client();
-  if (!resend) return;
+  if (!resend) return false;
   if (!booking.email) {
     console.warn("[email] booking has no email: skipping customer email.");
-    return;
+    return false;
   }
 
   const contact = getContactFromEnv();
@@ -202,7 +205,7 @@ export async function sendCustomerStatusEmail(
     customBody ?? emailBodyText(booking, status, getPricingFromEnv(), contact)
   ).trim();
 
-  await resend.emails.send({
+  const { error } = await resend.emails.send({
     from: from(),
     to: [booking.email],
     subject: emailSubject(status, booking),
@@ -217,6 +220,11 @@ export async function sendCustomerStatusEmail(
       preheader: emailPreheader(booking, status, contact),
     }),
   });
+  if (error) {
+    console.error("[email] status email was rejected:", error.message);
+    return false;
+  }
+  return true;
 }
 
 /**

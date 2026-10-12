@@ -44,8 +44,18 @@ describe("the alert for a stored booking", () => {
       "Type: Monthly Pass",
       "Notes: Window desk",
       "",
-      "https://booking.innospacetirana.com/dashboard",
+      `https://booking.innospacetirana.com/dashboard#${booking.id}`,
     ]);
+  });
+
+  it("ends on a link the stored booking can be found by again", async () => {
+    const fetchMock = stubTelegram();
+    const booking = await db.createBooking({ fullName: "Ada" });
+    await telegram.notifyNewBooking(booking);
+
+    const id = telegram.bookingIdIn(sentMessage(fetchMock).text);
+    expect(id).toBe(booking.id);
+    expect(await db.getBooking(id as string)).toEqual(booking);
   });
 
   it("gives a returning guest's second request its own name and phone", async () => {

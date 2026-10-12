@@ -401,6 +401,11 @@ export async function deleteBookings(ids: string[]): Promise<number> {
   })();
 }
 
+/** One booking by id, or null for a missing one. */
+export async function getBooking(id: string): Promise<Booking | null> {
+  return findBooking(id);
+}
+
 export async function updateBookingStatus(
   id: string,
   status: BookingStatus,

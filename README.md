@@ -9,7 +9,8 @@ booking form. It:
    confirm/cancel bookings.
 4. **Emails** the customer a branded confirm/cancel notice (via
    [Resend](https://resend.com)) when you action a booking.
-5. **Alerts you on Telegram** the moment a booking arrives (optional).
+5. **Alerts you on Telegram** the moment a booking arrives, and lets you
+   confirm, cancel or delete it by replying there (optional).
 
 - **Repo:** <https://github.com/IgliHoxha/innospace-bookings>
 - **Stack:** Next.js 15 (App Router) · React 19 · TypeScript · better-sqlite3 · Resend
@@ -77,6 +78,7 @@ misconfigured deploy fails loudly instead of silently running on a default.
 | `ALLOWED_ORIGINS` | no | Comma-separated origins allowed to POST and to call mutating routes. Unset means any. |
 | `TURNSTILE_SECRET_KEY` | no | Cloudflare Turnstile secret. If empty, verification is skipped. |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | no | Bot token and chat for the new-booking alert (see [Telegram alert](#telegram-alert)). With either one blank, no alert is sent. |
+| `TELEGRAM_WEBHOOK_SECRET` | no | Lets you answer an alert with `yes`, `no` or `delete` (see [Answering an alert](#answering-an-alert)). The same value is given to Telegram when the webhook is registered. Blank refuses every webhook call. |
 | `DATA_FILE` | no | SQLite path. Defaults to `./data/bookings.db`. |
 | `PRICE_CURRENCY` | yes | Currency used in the rate lines. A symbol (`€`) is glued to the amount, a word (`Lek`) follows it after a space. |
 | `PRICE_EVENT_ROOM_CURRENCY` | no | Currency for the Event Room only, when it differs. Defaults to `PRICE_CURRENCY`. |
@@ -133,6 +135,9 @@ The dashboard sits behind a branded sign-in (rate-limited per IP):
   `{ reviewAsked: boolean }` alone, it stamps or clears when the guest was asked
   for a review instead (which shows on every booking of theirs), and never emails.
 - `POST` / `DELETE /api/login`: sign in (sets cookie) / sign out.
+- `POST /api/telegram/webhook`: called by Telegram with each message sent to the
+  bot. No session: it is guarded by `TELEGRAM_WEBHOOK_SECRET` (`401` without it)
+  and acts only on replies from `TELEGRAM_CHAT_ID`.
 
 Every state-changing handler runs `requireAllowedOrigin` first (CSRF defense in
 depth alongside the `sameSite=lax` cookie), then the session guard in
@@ -193,6 +198,49 @@ no library.
 The alert never costs a booking: if Telegram refuses the message or does not
 answer within three seconds, the reason is logged and the guest still gets
 their `201`. Honeypot submissions and refused requests send nothing.
+
+### Answering an alert
+
+With `TELEGRAM_WEBHOOK_SECRET` set as well, you can act on a booking without
+opening the dashboard. Reply to its alert with one word:
+
+| Reply | Does | Guest email |
+| --- | --- | --- |
+| `yes` | Confirms the booking | Confirmation |
+| `no` | Cancels the booking | Cancellation |
+| `delete` | Moves it to the Deleted tab | None |
+
+Each does exactly what the matching dashboard button does
+([`src/lib/booking-actions.ts`](src/lib/booking-actions.ts) serves both), with
+the template email, since there is nowhere to edit it. The bot answers with
+what happened, including whether the email went out. A booking already in that
+state is left alone, and you can change your mind by replying again.
+
+The reply has to be made **to the booking's own message**, which is how the bot
+knows which booking you mean (the alert ends on a link carrying its id). The
+app opens the reply box on each new alert for you; for an older one, swipe the
+message or tap it and choose Reply.
+
+One-time setup, after the code is deployed:
+
+```bash
+SECRET=$(openssl rand -hex 32)
+fly secrets set TELEGRAM_WEBHOOK_SECRET=$SECRET
+
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+  -d "url=https://booking.innospacetirana.com/api/telegram/webhook" \
+  -d "secret_token=$SECRET" \
+  -d 'allowed_updates=["message"]'
+```
+
+If replies get no answer, `curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"`
+shows the last error Telegram met. A `403` there usually means Cloudflare
+challenged Telegram's request (Bot Fight Mode or a WAF rule): allow
+`/api/telegram/webhook` through. Once a webhook is registered, `getUpdates` no
+longer works for that bot.
+
+Only the configured chat is listened to. Anyone can write to a bot, so messages
+from every other chat are dropped without an answer.
 
 ---
 
@@ -264,12 +312,15 @@ src/
     api/bookings/route.ts        POST (create), GET (list)
     api/bookings/[id]/route.ts   PATCH (status + customer email, review marker)
     api/login/route.ts           login / logout
+    api/telegram/webhook/route.ts  POST (replies to a booking alert)
     dashboard/                   protected dashboard
     login/                       login page
   lib/
     db.ts        SQLite storage + users/auth
     email.ts     Resend customer emails
+    booking-actions.ts  confirm / cancel / delete, for the dashboard and Telegram
     telegram.ts  new-booking alert to the owner
+    telegram-reply.ts  acting on a yes / no / delete reply to it
     templates.ts email bodies + pricing (shared with the UI)
     review.ts    review request copy and rules (shared with the UI)
     review-auto.ts  the automatic review email run

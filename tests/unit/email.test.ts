@@ -147,19 +147,47 @@ describe("sendCustomerStatusEmail", () => {
     vi.stubEnv("RESEND_API_KEY", "");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const mod = await import("@/lib/email");
-    await mod.sendCustomerStatusEmail(BOOKING, "confirmed");
+    expect(await mod.sendCustomerStatusEmail(BOOKING, "confirmed")).toBe(false);
     expect(send).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 
   it("skips a booking with no email address", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await email.sendCustomerStatusEmail(
-      { ...BOOKING, email: undefined },
-      "cancelled",
-    );
+    expect(
+      await email.sendCustomerStatusEmail(
+        { ...BOOKING, email: undefined },
+        "cancelled",
+      ),
+    ).toBe(false);
     expect(send).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it("resolves true once Resend has accepted the email", async () => {
+    expect(await email.sendCustomerStatusEmail(BOOKING, "confirmed")).toBe(
+      true,
+    );
+    expect(await email.sendCustomerStatusEmail(BOOKING, "cancelled")).toBe(
+      true,
+    );
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("resolves false and logs the reason when Resend rejects it", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    send.mockResolvedValueOnce({
+      data: null,
+      error: { message: "domain not verified" },
+    });
+    expect(await email.sendCustomerStatusEmail(BOOKING, "confirmed")).toBe(
+      false,
+    );
+    expect(log).toHaveBeenCalledWith(
+      "[email] status email was rejected:",
+      "domain not verified",
+    );
+    log.mockRestore();
   });
 
   it("quotes the event room in its own currency and a pass in the shared one", async () => {

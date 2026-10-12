@@ -41,7 +41,7 @@ export function verifySessionToken(token: string | undefined | null): boolean {
   return exp > Date.now();
 }
 
-function safeEqual(input: string, expected: string): boolean {
+export function safeEqual(input: string, expected: string): boolean {
   const a = Buffer.from(input);
   const b = Buffer.from(expected);
   if (a.length !== b.length) return false;

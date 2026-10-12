@@ -16,3 +16,5 @@ export const SIGNING_ALT = "fixture-signing-b";
 /** Dummy Telegram bot token (TELEGRAM_BOT_TOKEN) and the chat it alerts. */
 export const BOT_TOKEN = "fixture-bot-token";
 export const BOT_CHAT = "-1001234";
+/** Dummy secret the Telegram webhook is registered with (TELEGRAM_WEBHOOK_SECRET). */
+export const WEBHOOK_SECRET = "fixture-webhook-secret";

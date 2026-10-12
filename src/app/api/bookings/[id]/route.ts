@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setReviewAsked, updateBookingStatus } from "@/lib/db";
-import { sendCustomerStatusEmail } from "@/lib/email";
+import { setReviewAsked } from "@/lib/db";
+import { changeBookingStatus } from "@/lib/booking-actions";
 import { requireSession } from "@/lib/api-auth";
 import { jsonError } from "@/lib/api-response";
 import { requireAllowedOrigin } from "@/lib/cors";
@@ -43,21 +43,13 @@ export async function PATCH(
     return jsonError("Invalid status.", 400);
   }
 
-  const booking = await updateBookingStatus(id, status);
-  if (!booking) return jsonError("Not found.", 404);
+  // Emails the customer on confirm/cancel; a failed email still answers 200.
+  const changed = await changeBookingStatus(
+    id,
+    status,
+    typeof emailBody === "string" ? emailBody : undefined,
+  );
+  if (!changed) return jsonError("Not found.", 404);
 
-  // Notify the customer on confirm/cancel. Never block the response on email.
-  if (status === "confirmed" || status === "cancelled") {
-    try {
-      await sendCustomerStatusEmail(
-        booking,
-        status,
-        typeof emailBody === "string" ? emailBody : undefined,
-      );
-    } catch (err) {
-      console.error("[bookings] customer status email failed:", err);
-    }
-  }
-
-  return NextResponse.json({ ok: true, booking });
+  return NextResponse.json({ ok: true, booking: changed.booking });
 }

@@ -1,6 +1,7 @@
 /**
  * Telegram alert to the owner when a booking arrives, feature-flagged by
  * TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID: either one unset skips it.
+ * TELEGRAM_WEBHOOK_SECRET lets the owner answer an alert (see telegram-reply.ts).
  */
 import { appBaseUrl, optionalEnv } from "./env-app";
 import { formatDateRangeLong } from "./datetime";
@@ -16,6 +17,14 @@ const TIMEOUT_MS = 3000;
 // so each field is cut short enough to keep the whole alert inside that.
 const FIELD_MAX = 200;
 const NOTE_MAX = 1000;
+
+export const REPLY_HINT =
+  "Reply yes to confirm, no to cancel, or delete to delete it.";
+
+/** True once the webhook secret is set, which is what lets an alert be answered. */
+export function repliesEnabled(): boolean {
+  return !!optionalEnv("TELEGRAM_WEBHOOK_SECRET");
+}
 
 // Counted in code points, so the cut never lands inside an emoji.
 function clip(value: string | undefined, max: number): string {
@@ -46,15 +55,23 @@ export function newBookingText(booking: Booking): string {
       .filter(([, value]) => value)
       .map(([label, value]) => `${label}: ${value}`),
     "",
-    `${appBaseUrl().replace(/\/$/, "")}/dashboard`,
+    ...(repliesEnabled() ? [REPLY_HINT, ""] : []),
+    // Always the last line, where nothing a guest typed can follow it: a reply
+    // is matched to its booking by the id this link ends on (see bookingIdIn).
+    `${appBaseUrl().replace(/\/$/, "")}/dashboard#${booking.id}`,
   ].join("\n");
 }
 
-/**
- * Sends the alert. Resolves true only when Telegram accepted it and never
- * throws, so a failed alert cannot fail the booking that caused it.
- */
-export async function notifyNewBooking(booking: Booking): Promise<boolean> {
+const ALERT_ID =
+  /\/dashboard#([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\s*$/;
+
+/** The booking an alert is about, read from its closing link. Null for other text. */
+export function bookingIdIn(text: unknown): string | null {
+  return typeof text === "string" ? (ALERT_ID.exec(text)?.[1] ?? null) : null;
+}
+
+// The message is built inside the try, so nothing about it can throw past here.
+async function send(message: () => Record<string, unknown>): Promise<boolean> {
   const token = optionalEnv("TELEGRAM_BOT_TOKEN");
   const chatId = optionalEnv("TELEGRAM_CHAT_ID");
   if (!token || !chatId) return false;
@@ -65,15 +82,15 @@ export async function notifyNewBooking(booking: Booking): Promise<boolean> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId,
-        text: newBookingText(booking),
-        // The link is the login-gated dashboard, so a preview of it is noise.
+        // The only link is the login-gated dashboard, so a preview is noise.
         link_preview_options: { is_disabled: true },
+        ...message(),
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const data = (await res.json()) as { ok: boolean; description?: string };
     if (!data.ok) {
-      console.error("[telegram] alert was rejected:", data.description);
+      console.error("[telegram] message was rejected:", data.description);
       return false;
     }
     return true;
@@ -81,9 +98,34 @@ export async function notifyNewBooking(booking: Booking): Promise<boolean> {
     // The token is part of the URL, so it is struck from whatever gets logged.
     const reason = err instanceof Error ? err.message : String(err);
     console.error(
-      "[telegram] alert request failed:",
+      "[telegram] request failed:",
       reason.split(token).join("[token]"),
     );
     return false;
   }
+}
+
+/**
+ * Sends the alert. Resolves true only when Telegram accepted it and never
+ * throws, so a failed alert cannot fail the booking that caused it.
+ */
+export async function notifyNewBooking(booking: Booking): Promise<boolean> {
+  return send(() => ({
+    text: newBookingText(booking),
+    // Opens the reply box on this alert, so a typed "yes" is a reply to it.
+    ...(repliesEnabled() && {
+      reply_markup: {
+        force_reply: true,
+        input_field_placeholder: "yes, no or delete",
+      },
+    }),
+  }));
+}
+
+/** Sends `text` to the owner's chat, with the same promise as the alert. */
+export async function sendTelegramMessage(
+  text: string,
+  extra: Record<string, unknown> = {},
+): Promise<boolean> {
+  return send(() => ({ text, ...extra }));
 }

@@ -494,6 +494,27 @@ describe("createBooking with sparse input", () => {
   });
 });
 
+describe("getBooking", () => {
+  it("returns one booking with its guest's address, or null for a missing id", async () => {
+    const b = await db.createBooking(input());
+    await db.createBooking(
+      input({ fullName: "Other", email: "o@example.com" }),
+    );
+    expect(await db.getBooking(b.id)).toEqual(b);
+    expect((await db.getBooking(b.id))?.email).toBe(input().email);
+    expect(await db.getBooking("ghost")).toBeNull();
+    expect(await db.getBooking("")).toBeNull();
+  });
+
+  it("still finds a soft-deleted booking, but not one removed for good", async () => {
+    const b = await db.createBooking(input());
+    await db.updateBookingStatus(b.id, "deleted");
+    expect((await db.getBooking(b.id))?.status).toBe("deleted");
+    await db.deleteBookings([b.id]);
+    expect(await db.getBooking(b.id)).toBeNull();
+  });
+});
+
 describe("updateBookingStatus", () => {
   it("updates and returns the row, or null for a missing id", async () => {
     const b = await db.createBooking(input());

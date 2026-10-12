@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp } from "../helpers/app";
-import { BOT_CHAT } from "../helpers/fixtures";
+import { BOT_CHAT, WEBHOOK_SECRET } from "../helpers/fixtures";
 import { SEND_URL, sentMessage, stubTelegram } from "../helpers/telegram";
 
 type Route = typeof import("@/app/api/bookings/route");
@@ -43,6 +43,7 @@ describe("POST /api/bookings (Telegram alert)", () => {
     });
     expect(res.status).toBe(201);
     expect(await total()).toBe(1);
+    const { id } = (await res.json()) as { id: string };
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe(SEND_URL);
@@ -58,8 +59,20 @@ describe("POST /api/bookings (Telegram alert)", () => {
       "Type: Event Room",
       "Notes: Need a projector",
       "",
-      "https://booking.innospacetirana.com/dashboard",
+      `https://booking.innospacetirana.com/dashboard#${id}`,
     ]);
+    expect(message.reply_markup).toBeUndefined();
+  });
+
+  it("invites a reply once the webhook secret is set", async () => {
+    const fetchMock = stubTelegram();
+    vi.stubEnv("TELEGRAM_WEBHOOK_SECRET", WEBHOOK_SECRET);
+    expect((await post(good)).status).toBe(201);
+    const message = sentMessage(fetchMock);
+    expect(message.text).toContain(
+      "\n\nReply yes to confirm, no to cancel, or delete to delete it.\n\n",
+    );
+    expect(message.reply_markup?.force_reply).toBe(true);
   });
 
   it("names the default plan for a request that sent none", async () => {
