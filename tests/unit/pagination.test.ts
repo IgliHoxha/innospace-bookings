@@ -5,11 +5,16 @@ import {
   pageCount,
   pageList,
 } from "@/lib/pagination";
+import { BOOKING_FILTERS } from "@/lib/types";
 
 describe("pagination constants", () => {
-  it("exposes a positive page size and a default filter", () => {
+  it("exposes a positive page size", () => {
     expect(PAGE_SIZE).toBe(25);
-    expect(INITIAL_FILTER).toBe("new");
+  });
+
+  it("opens the dashboard on All, a tab that is a real filter", () => {
+    expect(INITIAL_FILTER).toBe("all");
+    expect(BOOKING_FILTERS).toContain(INITIAL_FILTER);
   });
 });
 

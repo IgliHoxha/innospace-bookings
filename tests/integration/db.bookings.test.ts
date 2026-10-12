@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadDb } from "../helpers/app";
+import { INITIAL_FILTER, PAGE_SIZE } from "@/lib/pagination";
+import { INITIAL_SORT } from "@/lib/sort";
 import type { BookingInput } from "@/lib/types";
 
 type Db = Awaited<ReturnType<typeof loadDb>>;
@@ -144,6 +146,29 @@ describe("list ordering", () => {
     const expected = ["Fourth", "Third", "Second", "First"];
     expect(names(await db.listBookings())).toEqual(expected);
     expect(names((await db.queryBookings()).bookings)).toEqual(expected);
+  });
+
+  it("opens the dashboard on every booking but the deleted, newest request first", async () => {
+    const first = await book({ fullName: "First", from: "2026-09-01" });
+    const second = await book({ fullName: "Second", from: "2026-07-01" });
+    const third = await book({ fullName: "Third", from: "2026-08-01" });
+    const fourth = await book({ fullName: "Fourth", from: undefined });
+    await db.updateBookingStatus(first.id, "confirmed");
+    await db.updateBookingStatus(second.id, "cancelled");
+    await db.updateBookingStatus(third.id, "deleted");
+    await db.updateBookingStatus(fourth.id, "confirmed");
+
+    const opening = await db.queryBookings({
+      filter: INITIAL_FILTER,
+      sort: INITIAL_SORT.key,
+      dir: INITIAL_SORT.dir,
+      page: 1,
+      pageSize: PAGE_SIZE,
+    });
+    expect(names(opening.bookings)).toEqual(["Fourth", "Second", "First"]);
+    expect(opening.total).toBe(3);
+    // Every request is answered, which is when a "new" opening tab sat empty.
+    expect((await db.queryBookings({ filter: "new" })).total).toBe(0);
   });
 
   it("orders by the moment of the request, across a year boundary", async () => {

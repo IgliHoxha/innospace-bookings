@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp, sessionToken } from "../helpers/app";
+import { INITIAL_FILTER, PAGE_SIZE } from "@/lib/pagination";
+import { INITIAL_SORT } from "@/lib/sort";
 
 type Route = typeof import("@/app/api/bookings/route");
 type Db = typeof import("@/lib/db");
@@ -216,6 +218,54 @@ describe("GET /api/bookings (protected)", () => {
     expect(body.total).toBe(1);
     expect(body.counts.total).toBe(2);
     expect(body.bookings[0].fullName).toBe("Bob");
+  });
+
+  it("serves the dashboard's opening view: every booking but the deleted, newest first", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const made = [];
+    for (const [hour, fullName] of [
+      "First",
+      "Second",
+      "Third",
+      "Fourth",
+    ].entries()) {
+      vi.setSystemTime(new Date(Date.UTC(2026, 5, 1, hour)));
+      made.push(await db.createBooking({ fullName }));
+    }
+    vi.useRealTimers();
+    await db.updateBookingStatus(made[0].id, "confirmed");
+    await db.updateBookingStatus(made[1].id, "cancelled");
+    await db.updateBookingStatus(made[2].id, "deleted");
+    await db.updateBookingStatus(made[3].id, "confirmed");
+
+    // The query the dashboard sends for its first view.
+    const params = new URLSearchParams({
+      status: INITIAL_FILTER,
+      q: "",
+      sort: INITIAL_SORT.key,
+      dir: INITIAL_SORT.dir,
+      page: "1",
+      pageSize: String(PAGE_SIZE),
+    });
+    const res = await route.GET(
+      makeRequest(`/api/bookings?${params.toString()}`, {
+        token: sessionToken(),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      bookings: { fullName: string }[];
+      total: number;
+      counts: { new: number };
+    };
+    expect(body.bookings.map((b) => b.fullName)).toEqual([
+      "Fourth",
+      "Second",
+      "First",
+    ]);
+    expect(body.total).toBe(3);
+    // Nothing is new, which is when a "new" opening tab showed an empty list.
+    expect(body.counts.new).toBe(0);
   });
 
   it("lists the newest request first on every status filter and page", async () => {
