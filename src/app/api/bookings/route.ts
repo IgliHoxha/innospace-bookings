@@ -14,6 +14,7 @@ import {
 import { verifyTurnstile } from "@/lib/turnstile";
 import { requireSession } from "@/lib/api-auth";
 import { jsonError } from "@/lib/api-response";
+import { bookingDatesError } from "@/lib/booking-dates";
 import { parseSort } from "@/lib/sort";
 
 // This route touches the filesystem and node:crypto - force the Node runtime.
@@ -69,6 +70,10 @@ export async function POST(req: NextRequest) {
     if (planRaw && !BOOKING_PLANS.includes(planRaw as BookingPlan)) {
       return jsonError(`Unknown plan: ${planRaw}.`, 400, cors);
     }
+
+    // The website checks these too; here they hold for a request that skips the form.
+    const datesError = bookingDatesError(input.plan, input.from, input.to);
+    if (datesError) return jsonError(datesError, 400, cors);
 
     const booking = await createBooking(input);
 

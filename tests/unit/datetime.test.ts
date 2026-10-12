@@ -9,6 +9,7 @@ import {
   pad2,
   todayYMD,
   zonedDay,
+  zonedStamp,
 } from "@/lib/datetime";
 
 // The table's range separator is an arrow. Build it from its code point so no
@@ -182,5 +183,33 @@ describe("zonedDay", () => {
     expect(
       zonedDay(new Date("2026-07-02T02:00:00Z"), "America/New_York"),
     ).toEqual({ ymd: "2026-07-01", hour: 22 });
+  });
+});
+
+describe("zonedStamp", () => {
+  const ZONE = "Europe/Tirane";
+
+  it("writes the wall clock to the minute, in winter and in summer", () => {
+    expect(zonedStamp(new Date("2026-01-15T08:05:59Z"), ZONE)).toBe(
+      "2026-01-15T09:05",
+    );
+    expect(zonedStamp(new Date("2026-07-02T08:30:00Z"), ZONE)).toBe(
+      "2026-07-02T10:30",
+    );
+  });
+
+  it("writes midnight as 00, on the zone's own day", () => {
+    expect(zonedStamp(new Date("2026-07-01T22:00:00Z"), ZONE)).toBe(
+      "2026-07-02T00:00",
+    );
+  });
+
+  it("follows whichever zone it is given", () => {
+    expect(zonedStamp(new Date("2026-07-02T02:00:00Z"), "UTC")).toBe(
+      "2026-07-02T02:00",
+    );
+    expect(
+      zonedStamp(new Date("2026-07-02T02:00:00Z"), "America/New_York"),
+    ).toBe("2026-07-01T22:00");
   });
 });

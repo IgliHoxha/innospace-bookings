@@ -87,6 +87,97 @@ describe("POST /api/bookings (public)", () => {
   });
 });
 
+describe("POST /api/bookings (date rules)", () => {
+  const total = async () => (await db.queryBookings()).total;
+
+  // Monday 12 October 2026, 10:30 in Tirana (08:30 UTC).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-12T08:30:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("201s a pass for today before the cutoff and stores its dates", async () => {
+    const res = await post({ ...good, from: "2026-10-12", to: "2026-10-12" });
+    expect(res.status).toBe(201);
+    const stored = (await db.queryBookings()).bookings[0];
+    expect(stored.from).toBe("2026-10-12");
+    expect(stored.to).toBe("2026-10-12");
+  });
+
+  it("400s a pass for today once the cutoff has passed", async () => {
+    vi.setSystemTime(new Date("2026-10-12T11:30:00Z"));
+    const res = await post({ ...good, from: "2026-10-12", to: "2026-10-12" });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe("The earliest start date is 2026-10-13.");
+    expect(await total()).toBe(0);
+  });
+
+  it("400s a Day Pass on the weekend but takes a Weekly Pass", async () => {
+    const weekend = { from: "2026-10-17", to: "2026-10-17" };
+    const day = await post({ ...good, ...weekend });
+    expect(day.status).toBe(400);
+    expect((await day.json()).error).toContain("weekdays");
+    expect(await total()).toBe(0);
+
+    const week = await post({ ...good, plan: "weekly-pass", ...weekend });
+    expect(week.status).toBe(201);
+    expect(await total()).toBe(1);
+  });
+
+  it("400s an end before the start", async () => {
+    const res = await post({ ...good, from: "2026-10-15", to: "2026-10-14" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("before the start");
+    expect(await total()).toBe(0);
+  });
+
+  it("400s dates it cannot read", async () => {
+    const res = await post({ ...good, from: "next week", to: "2026-10-14" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Invalid booking dates.");
+    expect(await total()).toBe(0);
+  });
+
+  it("400s a room booking shorter than the minimum or already begun", async () => {
+    const room = { ...good, plan: "event-room" };
+    const short = await post({
+      ...room,
+      from: "2026-10-13T09:00",
+      to: "2026-10-13T11:00",
+    });
+    expect(short.status).toBe(400);
+    expect((await short.json()).error).toContain("at least 3 hours");
+
+    const begun = await post({
+      ...room,
+      from: "2026-10-12T09:00",
+      to: "2026-10-12T13:00",
+    });
+    expect(begun.status).toBe(400);
+    expect((await begun.json()).error).toContain("already passed");
+    expect(await total()).toBe(0);
+
+    const fine = await post({
+      ...room,
+      from: "2026-10-12T13:00",
+      to: "2026-10-12T17:00",
+    });
+    expect(fine.status).toBe(201);
+  });
+
+  it("answers a refused request with the CORS headers", async () => {
+    const res = await post(
+      { ...good, from: "2026-10-17", to: "2026-10-17" },
+      { origin: "https://example.com" },
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeTruthy();
+  });
+});
+
 describe("GET /api/bookings (protected)", () => {
   it("401s without a session", async () => {
     expect((await route.GET(makeRequest("/api/bookings"))).status).toBe(401);

@@ -97,24 +97,28 @@ export function daysSinceEnd(
   return Math.round((utc(now) - utc(end)) / 86_400_000);
 }
 
-/** The calendar day ("YYYY-MM-DD") and hour (0-23) of `now` in an IANA time zone. */
-export function zonedDay(
-  now: Date,
-  timeZone: string,
-): { ymd: string; hour: number } {
+/** `now` as the wall clock of an IANA time zone, "YYYY-MM-DDTHH:mm". */
+export function zonedStamp(now: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
+    minute: "2-digit",
     hourCycle: "h23",
   }).formatToParts(now);
   const at = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return {
-    ymd: `${at("year")}-${at("month")}-${at("day")}`,
-    hour: Number(at("hour")),
-  };
+  return `${at("year")}-${at("month")}-${at("day")}T${at("hour")}:${at("minute")}`;
+}
+
+/** The calendar day ("YYYY-MM-DD") and hour (0-23) of `now` in an IANA time zone. */
+export function zonedDay(
+  now: Date,
+  timeZone: string,
+): { ymd: string; hour: number } {
+  const stamp = zonedStamp(now, timeZone);
+  return { ymd: stamp.slice(0, 10), hour: Number(stamp.slice(11, 13)) };
 }
 
 /**
