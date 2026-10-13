@@ -6,16 +6,59 @@ on:
     branches:
       - master
   workflow_dispatch: # allow manual deploys from the Actions tab
+
+# One run at a time, oldest first, so an older commit can never deploy over a
+# newer one. A run in progress is never cancelled mid-deploy; of the runs
+# waiting behind it, only the newest is kept.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
-  deploy:
-    name: Deploy app
+  check:
+    name: Format, lint, types and tests
     runs-on: ubuntu-latest
-    concurrency: deploy-group # optional: ensure only one action runs at a time
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run typecheck:tests
+      - run: npm run test
+
+  # Runs beside the checks rather than after them, so gating the release on the
+  # checks costs no time: the image is built and pushed, but not released.
+  build:
+    name: Build image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: superfly/flyctl-actions/setup-flyctl@1.6
         # fly.toml is gitignored (config lives in `fly secrets`); the committed
         # fly.toml.example carries the non-secret app config CI deploys with.
-      - run: flyctl deploy --remote-only --ha=false --config fly.toml.example
+      - run: flyctl deploy --build-only --push --remote-only --image-label "sha-${GITHUB_SHA}" --config fly.toml.example
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  # Releases the image built above, and only once the checks have passed.
+  deploy:
+    name: Deploy app
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: superfly/flyctl-actions/setup-flyctl@1.6
+      - run: flyctl deploy --image "registry.fly.io/innospace-bookings:sha-${GITHUB_SHA}" --ha=false --config fly.toml.example
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

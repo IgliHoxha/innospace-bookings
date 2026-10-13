@@ -11,3 +11,21 @@ npm-debug.log*
 Dockerfile
 .dockerignore
 docker-compose.yml
+
+# Nothing below is read by `next build`, so a change to it must not invalidate
+# the build layer: a tests-only or docs-only commit then reuses the cached image.
+tests
+docs
+coverage
+.github
+.vscode
+*.tsbuildinfo
+tsconfig.tests.json
+vitest.config.ts
+Makefile
+LICENSE
+.env.example
+.prettierrc.json
+.prettierignore
+fly.toml
+fly.toml.example

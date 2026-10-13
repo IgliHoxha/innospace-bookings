@@ -279,7 +279,19 @@ fly certs add booking.innospacetirana.com
 > the only way to change config: there is no plaintext `[env]` to edit.
 
 Then a Cloudflare `CNAME booking → <app>.fly.dev`. Pushing to `master` also
-auto-deploys via GitHub Actions ([.github/workflows/fly-deploy.yml](.github/workflows/fly-deploy.yml)).
+auto-deploys via GitHub Actions ([.github/workflows/fly-deploy.yml](.github/workflows/fly-deploy.yml)):
+
+- **Checks** (format, lint, both type checks, tests) and the **image build** run
+  side by side. The build pushes the image to Fly's registry without releasing it.
+- **The release** runs only when both have passed, so a push with a failing
+  test never reaches production.
+- Runs are queued one at a time, so an older commit cannot deploy over a newer one.
+
+To try a Dockerfile change on Fly's builder without deploying it:
+
+```bash
+fly deploy --build-only --push --image-label try-1 --config fly.toml.example
+```
 
 > Any Docker host with a persistent volume works too: `docker compose up -d --build`.
 

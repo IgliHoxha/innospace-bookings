@@ -6,6 +6,20 @@ const nextConfig = {
   // Don't bundle the native sqlite module: keep it external so its .node binary loads.
   serverExternalPackages: ["better-sqlite3"],
 
+  // Every image here is a plain <img>, so the optimiser never runs. Saying so
+  // lets the two excludes below drop sharp (34 MB of binaries) from the server
+  // bundle, and keeps a future next/image working without it.
+  images: { unoptimized: true },
+  // Traced into the standalone output but never loaded by the running server:
+  // sharp as above, and the TypeScript compiler, which only `next dev` uses.
+  outputFileTracingExcludes: {
+    "*": [
+      "node_modules/@img/**",
+      "node_modules/sharp/**",
+      "node_modules/typescript/**",
+    ],
+  },
+
   // Cache-Control for the Cloudflare edge, so asset traffic stops waking the
   // Fly machine. `s-maxage` is what the CDN honours; `max-age` governs the
   // visitor's own disk. Every screen here sits behind the session cookie, so
