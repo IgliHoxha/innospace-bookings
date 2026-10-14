@@ -208,6 +208,19 @@ describe("sendCustomerStatusEmail", () => {
     expect(htmlOf(1)).not.toContain("Lek");
   });
 
+  it("quotes a pass in its own currency when it has one", async () => {
+    vi.stubEnv("PRICE_DAILY_PASS", "1,500");
+    vi.stubEnv("PRICE_DAILY_PASS_CURRENCY", "Lek");
+    vi.stubEnv("PRICE_WEEKLY_PASS", "60");
+    await email.sendCustomerStatusEmail(BOOKING, "confirmed");
+    await email.sendCustomerStatusEmail(
+      { ...BOOKING, plan: "weekly-pass" },
+      "confirmed",
+    );
+    expect(htmlOf(0)).toContain("The Day Pass rate is 1,500 Lek per day.");
+    expect(htmlOf(1)).toContain("The Weekly Pass rate is 60€ per week.");
+  });
+
   it("tells the guest the hours of an event room booking", async () => {
     await email.sendCustomerStatusEmail(
       {

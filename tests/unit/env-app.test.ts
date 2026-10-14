@@ -86,6 +86,18 @@ describe("getPricingFromEnv", () => {
     });
   });
 
+  it("reads a pass's own currency and leaves the others on the shared one", () => {
+    vi.stubEnv("PRICE_DAILY_PASS", "1,500");
+    vi.stubEnv("PRICE_DAILY_PASS_CURRENCY", " Lek ");
+    const p = getPricingFromEnv();
+    expect(p.currency).toBe("€");
+    expect(p.planCurrencies).toEqual({
+      "daily-pass": "Lek",
+      "weekly-pass": undefined,
+      "monthly-pass": undefined,
+    });
+  });
+
   it("throws when PRICE_CURRENCY is missing", () => {
     vi.stubEnv("PRICE_CURRENCY", "");
     expect(() => getPricingFromEnv()).toThrow(/PRICE_CURRENCY/);

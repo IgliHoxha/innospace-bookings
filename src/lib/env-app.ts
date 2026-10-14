@@ -49,6 +49,11 @@ export function getPricingFromEnv(): Pricing {
       "weekly-pass": optionalEnv("PRICE_WEEKLY_PASS"),
       "monthly-pass": optionalEnv("PRICE_MONTHLY_PASS"),
     },
+    planCurrencies: {
+      "daily-pass": optionalEnv("PRICE_DAILY_PASS_CURRENCY"),
+      "weekly-pass": optionalEnv("PRICE_WEEKLY_PASS_CURRENCY"),
+      "monthly-pass": optionalEnv("PRICE_MONTHLY_PASS_CURRENCY"),
+    },
     eventRoom: {
       currency: optionalEnv("PRICE_EVENT_ROOM_CURRENCY"),
       hour: optionalEnv("PRICE_EVENT_ROOM_HOUR"),

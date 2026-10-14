@@ -78,7 +78,8 @@ export function priceLineFor(
   const meta = PLAN_META[booking.plan];
   const amount = pricing.plans[booking.plan];
   if (!meta || !amount) return null;
-  return `The ${meta.label} rate is ${money(amount, cur)} per ${meta.period}.`;
+  const planCur = pricing.planCurrencies?.[booking.plan] ?? cur;
+  return `The ${meta.label} rate is ${money(amount, planCur)} per ${meta.period}.`;
 }
 
 function titleCase(s: string): string {

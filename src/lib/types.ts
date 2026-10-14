@@ -52,6 +52,8 @@ export interface Booking extends BookingInput {
 export interface Pricing {
   currency: string;
   plans: Partial<Record<BookingPlan, string>>;
+  // A pass priced in a currency of its own (the Day Pass is in lek); unset, `currency` applies.
+  planCurrencies?: Partial<Record<BookingPlan, string>>;
   // Event Room is billed by the hour (3h min), the half day or the day, and
   // may be priced in a currency of its own (`currency` falls back to the above).
   eventRoom?: {
