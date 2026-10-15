@@ -504,6 +504,13 @@ describe("the reply address", () => {
     expect(sentReplyTo()).toBe("info@example.test");
   });
 
+  // The display name is what tells a shared inbox which app a reply answers.
+  it("passes a display name through untouched", async () => {
+    vi.stubEnv("EMAIL_REPLY_TO", "Innospace Bookings <info@example.test>");
+    await email.sendCustomerStatusEmail(BOOKING, "confirmed");
+    expect(sentReplyTo()).toBe("Innospace Bookings <info@example.test>");
+  });
+
   it("sets no Reply-To while EMAIL_REPLY_TO is unset, so replies reach the sender", async () => {
     await email.sendCustomerStatusEmail(BOOKING, "confirmed");
     expect(sentReplyTo()).toBeUndefined();
