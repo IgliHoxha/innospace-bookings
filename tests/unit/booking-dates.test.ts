@@ -37,6 +37,17 @@ describe("earliestBookableDay", () => {
   it("closes today at the documented hour", () => {
     expect(SAME_DAY_CUTOFF_HOUR).toBe(13);
   });
+
+  // Without same-day booking today is out whatever the hour; the evening rule still applies.
+  it.each([
+    ["Monday morning", "2026-10-12T10:30", "2026-10-13"],
+    ["Monday evening", "2026-10-12T18:00", "2026-10-14"],
+    ["Thursday evening", "2026-10-15T18:00", "2026-10-19"],
+    ["Friday morning", "2026-10-16T09:00", "2026-10-19"],
+    ["Saturday", "2026-10-17T10:00", "2026-10-20"],
+  ])("on %s without same-day booking", (_label, stamp, day) => {
+    expect(earliestBookableDay(stamp, false)).toBe(day);
+  });
 });
 
 describe("bookingDatesError", () => {
@@ -53,19 +64,32 @@ describe("bookingDatesError", () => {
   });
 
   it("checks the start alone when no end is sent", () => {
-    expect(check("daily-pass", "2026-10-12")).toBeNull();
+    expect(check("daily-pass", "2026-10-13")).toBeNull();
     expect(check("daily-pass", "2026-10-09")).toMatch(EARLIEST);
   });
 
-  it("books today before the cutoff, on every plan", () => {
-    expect(check("daily-pass", "2026-10-12", "2026-10-12")).toBeNull();
+  it("books today before the cutoff, on every plan but the Day Pass", () => {
     expect(check("weekly-pass", "2026-10-12", "2026-10-19")).toBeNull();
     expect(check("monthly-pass", "2026-10-12", "2026-11-12")).toBeNull();
     expect(check("event-room", "2026-10-12", "2026-10-12")).toBeNull();
   });
 
-  it("refuses today once the cutoff and the grace have passed", () => {
+  it("starts a Day Pass tomorrow at the earliest, whatever the hour", () => {
     const today = ["daily-pass", "2026-10-12", "2026-10-12"] as const;
+    expect(check(...today, tirana("2026-10-12T09:00"))).toBe(
+      "The earliest start date is 2026-10-13.",
+    );
+    expect(check("daily-pass", "2026-10-13", "2026-10-13")).toBeNull();
+    // Friday morning: the next working day is Monday.
+    const friday = tirana("2026-10-16T09:00");
+    expect(check("daily-pass", "2026-10-16", "2026-10-16", friday)).toMatch(
+      EARLIEST,
+    );
+    expect(check("daily-pass", "2026-10-19", "2026-10-19", friday)).toBeNull();
+  });
+
+  it("refuses today once the cutoff and the grace have passed", () => {
+    const today = ["weekly-pass", "2026-10-12", "2026-10-19"] as const;
     expect(check(...today, tirana("2026-10-12T12:59"))).toBeNull();
     // The grace keeps the form's last answer valid for a few minutes.
     expect(check(...today, tirana("2026-10-12T13:09"))).toBeNull();
@@ -93,20 +117,20 @@ describe("bookingDatesError", () => {
   it("does not let the grace tighten the rule just after midnight", () => {
     // 00:05 on Tuesday: ten minutes back it was Monday evening, which is stricter.
     const now = tirana("2026-10-13T00:05");
-    expect(check("daily-pass", "2026-10-13", "2026-10-13", now)).toBeNull();
+    expect(check("weekly-pass", "2026-10-13", "2026-10-20", now)).toBeNull();
   });
 
   it("reads the cutoff in Tirana time, in summer and in winter", () => {
     // 11:30 UTC is 13:30 in Tirana in October, past the cutoff.
     const summer = new Date("2026-10-12T11:30:00Z");
-    expect(check("daily-pass", "2026-10-12", "2026-10-12", summer)).toMatch(
+    expect(check("weekly-pass", "2026-10-12", "2026-10-19", summer)).toMatch(
       EARLIEST,
     );
     // Monday 11 January 2027: 11:30 UTC is 12:30 in Tirana, 12:30 UTC is 13:30.
     const before = new Date("2027-01-11T11:30:00Z");
     const after = new Date("2027-01-11T12:30:00Z");
-    expect(check("daily-pass", "2027-01-11", "2027-01-11", before)).toBeNull();
-    expect(check("daily-pass", "2027-01-11", "2027-01-11", after)).toMatch(
+    expect(check("weekly-pass", "2027-01-11", "2027-01-18", before)).toBeNull();
+    expect(check("weekly-pass", "2027-01-11", "2027-01-18", after)).toMatch(
       EARLIEST,
     );
   });
@@ -114,8 +138,8 @@ describe("bookingDatesError", () => {
   it("takes the day from Tirana when UTC is still on the day before", () => {
     // 22:30 UTC on Monday is 00:30 on Tuesday in Tirana.
     const now = new Date("2026-10-12T22:30:00Z");
-    expect(check("daily-pass", "2026-10-13", "2026-10-13", now)).toBeNull();
-    expect(check("daily-pass", "2026-10-12", "2026-10-12", now)).toMatch(
+    expect(check("weekly-pass", "2026-10-13", "2026-10-20", now)).toBeNull();
+    expect(check("weekly-pass", "2026-10-12", "2026-10-19", now)).toMatch(
       EARLIEST,
     );
   });

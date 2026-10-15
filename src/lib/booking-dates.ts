@@ -48,9 +48,13 @@ const weekday = (at: number) => new Date(at).getUTCDay();
 const isWeekend = (moment: Moment) => [0, 6].includes(weekday(moment.at));
 
 // The website's rule: today before the cutoff, else the next working day and its 17:00 cutoff.
-function daysToFirstBookableDay(day: number, hour: number): number {
+function daysToFirstBookableDay(
+  day: number,
+  hour: number,
+  sameDay: boolean,
+): number {
   const weekend = day === 0 || day === 6;
-  if (!weekend && hour < SAME_DAY_CUTOFF_HOUR) return 0;
+  if (sameDay && !weekend && hour < SAME_DAY_CUTOFF_HOUR) return 0;
   let days = day === 5 || day === 6 ? 3 : day === 0 ? 2 : 1;
   if (hour > 17) {
     if (!weekend) days += 1;
@@ -59,12 +63,13 @@ function daysToFirstBookableDay(day: number, hour: number): number {
   return days;
 }
 
-/** The first day that can be booked at `stamp`, a Tirana "YYYY-MM-DDTHH:mm". */
-export function earliestBookableDay(stamp: string): string {
+/** The first day that can be booked at `stamp`, a Tirana "YYYY-MM-DDTHH:mm"; `sameDay` false skips today whatever the hour. */
+export function earliestBookableDay(stamp: string, sameDay = true): string {
   const today = Date.parse(`${stamp.slice(0, 10)}T00:00:00Z`);
   const days = daysToFirstBookableDay(
     weekday(today),
     Number(stamp.slice(11, 13)),
+    sameDay,
   );
   return new Date(today + days * DAY_MS).toISOString().slice(0, 10);
 }
@@ -87,7 +92,11 @@ export function bookingDatesError(
   // Both clocks are read, since the one a few minutes back is stricter just after midnight.
   const current = zonedStamp(now, ZONE);
   const lenient = zonedStamp(new Date(now.getTime() - DATE_GRACE_MS), ZONE);
-  const earliest = [current, lenient].map(earliestBookableDay).sort()[0];
+  // The Day Pass starts tomorrow at the earliest (owner's request, 2026-10-15).
+  const sameDay = plan !== "daily-pass";
+  const earliest = [current, lenient]
+    .map((stamp) => earliestBookableDay(stamp, sameDay))
+    .sort()[0];
   if (start.day < earliest) return `The earliest start date is ${earliest}.`;
   if (start.timed && start.at < (parse(lenient)?.at ?? 0))
     return "That start time has already passed.";
