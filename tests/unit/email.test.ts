@@ -482,6 +482,48 @@ describe("the accent rule under the header", () => {
   });
 });
 
+// A reply follows Reply-To, so the sender mailbox never has to be read.
+describe("the reply address", () => {
+  const sentReplyTo = (call: number = 0) =>
+    send.mock.calls[call][0].replyTo as string | undefined;
+
+  it("sends both statuses with EMAIL_REPLY_TO as the Reply-To, from EMAIL_FROM unchanged", async () => {
+    vi.stubEnv("EMAIL_REPLY_TO", "info@example.test");
+    for (const status of ["confirmed", "cancelled"] as const) {
+      send.mockClear();
+      await email.sendCustomerStatusEmail(BOOKING, status);
+      expect(sentReplyTo()).toBe("info@example.test");
+      expect(send.mock.calls[0][0].from).toBe("onboarding@resend.dev");
+    }
+  });
+
+  it("puts it on the review request too", async () => {
+    vi.stubEnv("EMAIL_REPLY_TO", "info@example.test");
+    vi.stubEnv("BUSINESS_REVIEW_URL", "https://g.page/r/fixture/review");
+    await email.sendReviewRequestEmail({ ...BOOKING, status: "confirmed" });
+    expect(sentReplyTo()).toBe("info@example.test");
+  });
+
+  it("sets no Reply-To while EMAIL_REPLY_TO is unset, so replies reach the sender", async () => {
+    await email.sendCustomerStatusEmail(BOOKING, "confirmed");
+    expect(sentReplyTo()).toBeUndefined();
+  });
+
+  it("treats a blank EMAIL_REPLY_TO as unset", async () => {
+    vi.stubEnv("EMAIL_REPLY_TO", "   ");
+    await email.sendCustomerStatusEmail(BOOKING, "confirmed");
+    expect(sentReplyTo()).toBeUndefined();
+  });
+
+  it("reads the value at send time, so a change needs no restart of the client", async () => {
+    await email.sendCustomerStatusEmail(BOOKING, "confirmed");
+    vi.stubEnv("EMAIL_REPLY_TO", "info@example.test");
+    await email.sendCustomerStatusEmail(BOOKING, "confirmed");
+    expect(sentReplyTo(0)).toBeUndefined();
+    expect(sentReplyTo(1)).toBe("info@example.test");
+  });
+});
+
 describe("sendReviewRequestEmail", () => {
   const REVIEW_URL = "https://g.page/r/fixture/review";
   const VISITED: Booking = { ...BOOKING, status: "confirmed" };

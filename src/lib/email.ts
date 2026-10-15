@@ -87,6 +87,11 @@ function from(): string {
   return requireEnv("EMAIL_FROM");
 }
 
+// Where a reply lands instead of the sender; unset keeps the sender replyable.
+function replyTo(): string | undefined {
+  return optionalEnv("EMAIL_REPLY_TO");
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -208,6 +213,7 @@ export async function sendCustomerStatusEmail(
   const { error } = await resend.emails.send({
     from: from(),
     to: [booking.email],
+    replyTo: replyTo(),
     subject: emailSubject(status, booking),
     html: shell({
       accent: status === "confirmed" ? BRAND : RED,
@@ -245,6 +251,7 @@ export async function sendReviewRequestEmail(
   const { error } = await resend.emails.send({
     from: from(),
     to: [to],
+    replyTo: replyTo(),
     subject: reviewEmailSubject(contact),
     html: shell({
       accent: BRAND,

@@ -72,6 +72,7 @@ misconfigured deploy fails loudly instead of silently running on a default.
 | --- | --- | --- |
 | `RESEND_API_KEY` | no | Resend API key. If empty, emails are skipped (bookings still stored). |
 | `EMAIL_FROM` | yes | Verified Resend sender (e.g. `bookings@innospacetirana.com`). |
+| `EMAIL_REPLY_TO` | no | `Reply-To` on every email, so replies reach a real inbox instead of the sender. Blank = replies go to `EMAIL_FROM`. |
 | `APP_BASE_URL` | no | Base URL for links/logo in emails. Defaults to the production host. |
 | `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` | yes | Dashboard sign-in credentials. |
 | `AUTH_SECRET` | yes | Long random string signing the login cookie (`openssl rand -hex 32`). |

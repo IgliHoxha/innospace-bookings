@@ -27,6 +27,7 @@ for (const [key, value] of Object.entries(REQUIRED_BASELINE)) {
 // resetApp() to a temp file.
 for (const key of [
   "RESEND_API_KEY",
+  "EMAIL_REPLY_TO",
   "APP_BASE_URL",
   "TURNSTILE_SECRET_KEY",
   "TELEGRAM_BOT_TOKEN",
