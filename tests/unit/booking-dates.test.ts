@@ -204,6 +204,26 @@ describe("bookingDatesError", () => {
     );
   });
 
+  it("holds an interview room booking to its maximum", () => {
+    const long = "An interview room booking is at most 3 hours.";
+    expect(
+      check("interview-room", "2026-10-13T09:00", "2026-10-13T12:00"),
+    ).toBeNull();
+    expect(
+      check("interview-room", "2026-10-13T09:00", "2026-10-13T10:00"),
+    ).toBeNull();
+    expect(
+      check("interview-room", "2026-10-13T09:00", "2026-10-13T12:01"),
+    ).toBe(long);
+    // Same-day and weekend bookings follow the room rules, not the Day Pass ones.
+    expect(
+      check("interview-room", "2026-10-12T11:00", "2026-10-12T13:00"),
+    ).toBeNull();
+    expect(
+      check("interview-room", "2026-10-17T10:00", "2026-10-17T12:00"),
+    ).toBeNull();
+  });
+
   it("accepts seconds on a timed value", () => {
     expect(
       check("event-room", "2026-10-13T09:00:00", "2026-10-13T12:00:00.000"),

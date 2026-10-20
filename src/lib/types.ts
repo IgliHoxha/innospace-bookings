@@ -21,6 +21,7 @@ export const BOOKING_PLANS = [
   "weekly-pass",
   "monthly-pass",
   "event-room",
+  "interview-room",
 ] as const;
 
 export type BookingPlan = (typeof BOOKING_PLANS)[number];

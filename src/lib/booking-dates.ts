@@ -14,6 +14,9 @@ export const SAME_DAY_CUTOFF_HOUR = 13;
 /** The shortest hourly booking of the event room. */
 export const MIN_ROOM_HOURS = 3;
 
+/** The longest interview room booking: one flat price covers up to this. */
+export const SESSION_HOURS = 3;
+
 /** What the form allowed minutes ago still passes: clocks drift and the machine takes seconds to wake. */
 export const DATE_GRACE_MS = 10 * 60 * 1000;
 
@@ -110,6 +113,13 @@ export function bookingDatesError(
     end.at - start.at < MIN_ROOM_HOURS * HOUR_MS
   )
     return `An hourly booking is at least ${MIN_ROOM_HOURS} hours.`;
+  if (
+    plan === "interview-room" &&
+    start.timed &&
+    end.timed &&
+    end.at - start.at > SESSION_HOURS * HOUR_MS
+  )
+    return `An interview room booking is at most ${SESSION_HOURS} hours.`;
 
   return null;
 }

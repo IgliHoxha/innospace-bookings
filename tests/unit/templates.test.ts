@@ -127,6 +127,18 @@ describe("priceLineFor", () => {
     ).toBe("The Day Pass rate is 15€ per day.");
   });
 
+  it("prices the interview room per session", () => {
+    const room: Booking = { ...base, plan: "interview-room" };
+    expect(
+      t.priceLineFor(room, {
+        currency: "Lek",
+        plans: { "interview-room": "1,500" },
+      }),
+    ).toBe(
+      "The Interview Room rate is 1,500 Lek per booking of up to 3 hours.",
+    );
+  });
+
   it("prices the event room by hour and/or day, else null", () => {
     const evt: Booking = { ...base, plan: "event-room" };
     expect(

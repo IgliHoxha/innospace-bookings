@@ -18,6 +18,10 @@ const PLAN_META: Record<BookingPlan, { label: string; period: string }> = {
   "weekly-pass": { label: "Weekly Pass", period: "week" },
   "monthly-pass": { label: "Monthly Pass", period: "month" },
   "event-room": { label: "Event Room", period: "booking" },
+  "interview-room": {
+    label: "Interview Room",
+    period: "booking of up to 3 hours",
+  },
 };
 
 // Sign-off + contact/access block for the confirmation email. Only the details

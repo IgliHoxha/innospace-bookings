@@ -23,6 +23,7 @@ describe("booking enums", () => {
       "weekly-pass",
       "monthly-pass",
       "event-room",
+      "interview-room",
     ]);
   });
 });

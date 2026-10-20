@@ -99,17 +99,29 @@ describe("POST /api/bookings (date rules)", () => {
   });
   afterEach(() => vi.useRealTimers());
 
+  // A Weekly Pass: the Day Pass never gets today (see booking-dates.test.ts).
+  const week = { plan: "weekly-pass", from: "2026-10-12", to: "2026-10-19" };
+
   it("201s a pass for today before the cutoff and stores its dates", async () => {
-    const res = await post({ ...good, from: "2026-10-12", to: "2026-10-12" });
+    const res = await post({ ...good, ...week });
     expect(res.status).toBe(201);
     const stored = (await db.queryBookings()).bookings[0];
     expect(stored.from).toBe("2026-10-12");
-    expect(stored.to).toBe("2026-10-12");
+    expect(stored.to).toBe("2026-10-19");
+  });
+
+  it("400s a Day Pass for today even before the cutoff", async () => {
+    const res = await post({ ...good, from: "2026-10-12", to: "2026-10-12" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(
+      "The earliest start date is 2026-10-13.",
+    );
+    expect(await total()).toBe(0);
   });
 
   it("400s a pass for today once the cutoff has passed", async () => {
     vi.setSystemTime(new Date("2026-10-12T11:30:00Z"));
-    const res = await post({ ...good, from: "2026-10-12", to: "2026-10-12" });
+    const res = await post({ ...good, ...week });
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.ok).toBe(false);
