@@ -288,6 +288,11 @@ auto-deploys via GitHub Actions ([.github/workflows/fly-deploy.yml](.github/work
 - **The release** runs only when both have passed, so a push with a failing
   test never reaches production.
 - Runs are queued one at a time, so an older commit cannot deploy over a newer one.
+- **Each deploy is named.** A last job asks the couch-gag service for this repo's
+  next Simpsons episode, then creates a tag such as
+  `r1-simpsons-roasting-on-an-open-fire` and a GitHub release with that title. It needs
+  the repository variable `COUCH_GAG_URL` and the secret `COUCH_GAG_KEY`. It runs after
+  the deploy, so a couch-gag outage turns the run red but never holds a deploy back.
 
 To try a Dockerfile change on Fly's builder without deploying it:
 
