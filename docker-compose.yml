@@ -10,7 +10,7 @@ services:
     env_file:
       - .env
     volumes:
-      # Persist the JSON "database" outside the container.
+      # Persist the SQLite database outside the container.
       - bookings-data:/app/data
 
 volumes:
