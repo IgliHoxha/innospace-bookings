@@ -202,9 +202,6 @@ export default function DashboardClient({
             src="/logo.svg"
             alt="Innospace Tirana"
           />
-          <span className="site-footer-copy">
-            © {new Date().getFullYear()} Innospace Tirana. All rights reserved.
-          </span>
           <CreatedBy />
         </div>
       </footer>

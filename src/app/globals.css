@@ -898,11 +898,6 @@ tr:last-child td {
   display: block;
   opacity: 0.85;
 }
-.site-footer-copy {
-  font-size: 12px;
-  color: var(--muted);
-}
-
 /* "Created by" credit: the website footer's pill, recoloured from its plum ground for this white bar. */
 .created-by {
   display: inline-flex;
@@ -912,7 +907,7 @@ tr:last-child td {
   border-radius: 999px;
   background: rgba(82, 69, 82, 0.05);
   box-shadow: 0 0 0 1px rgba(82, 69, 82, 0.15);
-  color: var(--muted);
+  color: #000;
   font-size: 12px;
   text-decoration: none;
   transition:
@@ -930,7 +925,6 @@ tr:last-child td {
 .created-by strong {
   font-size: 14px;
   font-weight: 700;
-  color: var(--ink);
 }
 .created-by-mark {
   width: 28px;
