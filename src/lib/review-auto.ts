@@ -1,5 +1,4 @@
-// Sends the post-visit review email to every guest who is due. Server-only: it
-// reads env, the database and Resend, so never import it from a client component.
+// Sends the post-visit review email to every guest who is due. Server-only: never import it from a client component.
 import { zonedDay } from "./datetime";
 import {
   claimReviewEmail,
@@ -24,10 +23,7 @@ type ReviewRun = {
   failed: number;
 };
 
-/**
- * On only when REVIEW_AUTO_EMAIL is "on" and both the review link and the mail
- * key exist, so a dev machine holding real keys never mails anyone by accident.
- */
+/** On only with REVIEW_AUTO_EMAIL=on plus the review link and mail key, so a dev machine with real keys mails nobody. */
 export function reviewEmailsEnabled(): boolean {
   return (
     optionalEnv("REVIEW_AUTO_EMAIL") === "on" &&
@@ -83,10 +79,7 @@ export function sendDueReviewEmails(
   return running;
 }
 
-/**
- * Check now and then hourly for as long as this process lives. The Fly machine
- * cold-boots on every wake, so in practice the check runs each time it wakes.
- */
+/** Check now, then hourly while the process lives. The Fly machine cold-boots on every wake, so a wake is the clock. */
 export function startReviewEmails(): void {
   const check = () => {
     sendDueReviewEmails().catch((err) =>

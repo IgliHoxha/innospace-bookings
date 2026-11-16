@@ -1,5 +1,4 @@
-// Renders a React hook in a real root. The test file needs a DOM, so it opens
-// with Vitest's environment comment naming happy-dom.
+// Renders a React hook in a real root. The test file must open with Vitest's happy-dom environment comment.
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 

@@ -6,12 +6,9 @@ const nextConfig = {
   // Don't bundle the native sqlite module: keep it external so its .node binary loads.
   serverExternalPackages: ["better-sqlite3"],
 
-  // Every image here is a plain <img>, so the optimiser never runs. Saying so
-  // lets the two excludes below drop sharp (34 MB of binaries) from the server
-  // bundle, and keeps a future next/image working without it.
+  // Every image is a plain <img>, so the optimiser never runs and the excludes below can drop sharp (34 MB).
   images: { unoptimized: true },
-  // Traced into the standalone output but never loaded by the running server:
-  // sharp as above, and the TypeScript compiler, which only `next dev` uses.
+  // Traced into the standalone output but never loaded at runtime: sharp, and TypeScript (only `next dev` uses it).
   outputFileTracingExcludes: {
     "*": [
       "node_modules/@img/**",
@@ -20,10 +17,7 @@ const nextConfig = {
     ],
   },
 
-  // Cache-Control for the Cloudflare edge, so asset traffic stops waking the
-  // Fly machine. `s-maxage` is what the CDN honours; `max-age` governs the
-  // visitor's own disk. Every screen here sits behind the session cookie, so
-  // the static files are the only thing the edge may keep.
+  // Cache-Control for the Cloudflare edge (`s-maxage`) and the visitor's disk (`max-age`). Only static files may be kept.
   async headers() {
     const noStore = [{ key: "Cache-Control", value: "no-store" }];
     const unversionedAsset = [
@@ -35,9 +29,7 @@ const nextConfig = {
     ];
     return [
       {
-        // Gmail's image proxy refetches this per recipient, and the URL carries
-        // `?v=N` from email.ts (bump LOGO_VERSION when the file changes), so a
-        // year at the edge costs nothing and can't serve stale artwork.
+        // Gmail's proxy refetches this per recipient; the URL carries `?v=N` (LOGO_VERSION in email.ts), so a year is safe.
         source: "/logo-mark.svg",
         headers: [
           {
@@ -49,8 +41,7 @@ const nextConfig = {
       // Unversioned, so a day at the edge and a background refresh after it.
       { source: "/logo.svg", headers: unversionedAsset },
       { source: "/favicon.png", headers: unversionedAsset },
-      // Never cacheable, stated explicitly so a broad "cache everything" rule at
-      // Cloudflare can't ever serve one admin's dashboard to somebody else.
+      // Stated explicitly so a broad "cache everything" rule at Cloudflare can't serve one admin's dashboard to another.
       { source: "/", headers: noStore },
       { source: "/dashboard/:path*", headers: noStore },
       { source: "/login", headers: noStore },

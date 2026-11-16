@@ -3,10 +3,7 @@ import { formatDateTime, todayYMD } from "@/lib/datetime";
 import { reviewRequestLink } from "@/lib/review";
 import type { Booking, ContactInfo } from "@/lib/types";
 
-/**
- * A row's review request: the link that asks or, once asked, when that was and
- * a way to undo it. Client-only: "today" is the browser's date, not the server's.
- */
+/** A row's review request: the link that asks or, once asked, when and an undo. "Today" is the browser's date. */
 export default function ReviewAsk({
   booking,
   contact,

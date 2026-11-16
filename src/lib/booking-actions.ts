@@ -1,5 +1,4 @@
-// What the dashboard's Confirm, Cancel and Delete buttons do, kept in one place
-// so a Telegram reply does exactly the same thing.
+// What the dashboard's Confirm, Cancel and Delete do, in one place so a Telegram reply does exactly the same.
 import { updateBookingStatus } from "./db";
 import { sendCustomerStatusEmail } from "./email";
 import type { Booking, BookingStatus } from "./types";
@@ -10,10 +9,7 @@ export interface StatusChange {
   emailed: boolean;
 }
 
-/**
- * Set a booking's status and, on confirm or cancel, email the customer.
- * `emailBody` replaces the template. Null for a missing id.
- */
+/** Sets the status and emails the customer on confirm or cancel; `emailBody` replaces the template. Null if missing. */
 export async function changeBookingStatus(
   id: string,
   status: BookingStatus,

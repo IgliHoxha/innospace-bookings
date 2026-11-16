@@ -38,6 +38,7 @@ export default function Topbar({ username }: { username: string }) {
           <button
             className="user-btn"
             onClick={(e) => {
+              // Or this same click reaches the document listener and closes the menu it just opened.
               e.stopPropagation();
               setMenuOpen((o) => !o);
             }}

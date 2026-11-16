@@ -1,6 +1,4 @@
-// One pass over every state-changing handler: a disallowed Origin must be
-// refused 403 before any work. The valid token on authenticated routes proves
-// the 403 comes from the origin gate running first, not from the auth guard.
+// Every state-changing handler must 403 a disallowed Origin first; the valid token proves it is not the auth guard.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, params, resetApp, sessionToken } from "../helpers/app";
 
@@ -51,9 +49,7 @@ describe("origin gate on mutating handlers", () => {
     await expectForbidden(res);
   });
 
-  // Regression: the dashboard posts to its own API from the host it is served
-  // on. That is same-origin, never CSRF, so it must pass without the app's own
-  // origin being listed in ALLOWED_ORIGINS.
+  // Regression: the dashboard calling its own API is same-origin, so it must pass without listing itself.
   it("allows the dashboard calling its own API (same-origin, not on the list)", async () => {
     const route = await import("@/app/api/login/route");
     const res = await route.DELETE(

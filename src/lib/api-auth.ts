@@ -1,6 +1,4 @@
-// Auth guard for route handlers. Separate from auth.ts (pure crypto, no Next
-// dep) since this pulls in Next types. Returns null when the session is valid, or
-// a ready-made 401 to return as-is: `const denied = requireSession(req); if (denied) return denied;`
+// Session guard for route handlers. Apart from auth.ts (pure crypto) because this needs Next types.
 import type { NextRequest, NextResponse } from "next/server";
 import { jsonError } from "./api-response";
 import { verifySessionToken, SESSION_COOKIE } from "./auth";

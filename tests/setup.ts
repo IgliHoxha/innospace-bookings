@@ -1,13 +1,10 @@
-// Deterministic baseline env for every test file, then per-test temp-DB cleanup.
-// Tests override individual vars with vi.stubEnv and restore them themselves.
+// Deterministic baseline env for every test file, then per-test cleanup. Tests override vars with vi.stubEnv.
 import { afterEach, vi } from "vitest";
 import { dropAfter, queueAfter } from "./helpers/after";
 import { cleanupTmp } from "./helpers/app";
 import { ADMIN_PASS, ADMIN_USER, SIGNING } from "./helpers/fixtures";
 
-// Required env vars have no code default (see lib/env-app), so the suite supplies
-// a baseline. It mirrors .env.example, so value-dependent tests keep asserting
-// the same numbers; individual tests still override with vi.stubEnv.
+// Required vars have no code default, so the suite supplies a baseline that mirrors .env.example.
 const REQUIRED_BASELINE: Record<string, string> = {
   AUTH_SECRET: SIGNING,
   DASHBOARD_USERNAME: ADMIN_USER,
@@ -23,9 +20,7 @@ for (const [key, value] of Object.entries(REQUIRED_BASELINE)) {
   process.env[key] = value;
 }
 
-// Optional vars stay OFF for a deterministic suite (email skipped, Turnstile
-// skipped, no Telegram alert, CORS wildcard, contact footer minimal). DATA_FILE is set per-test by
-// resetApp() to a temp file.
+// Optional vars stay off for a deterministic suite. DATA_FILE is set per test by resetApp().
 for (const key of [
   "RESEND_API_KEY",
   "EMAIL_REPLY_TO",
@@ -63,15 +58,13 @@ for (const key of [
   delete process.env[key];
 }
 
-// after() throws outside a real request, so handlers queue their work instead
-// and a test runs it with afterResponse().
+// after() throws outside a real request, so handlers queue their work and a test runs it with afterResponse().
 vi.mock("next/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/server")>()),
   after: queueAfter,
 }));
 
-// Mocks persist across vi.resetModules(), so clear call history each test (the
-// mockResolvedValue implementations set in vi.mock factories survive a clear).
+// Mocks persist across vi.resetModules(), so clear call history each test (implementations survive a clear).
 afterEach(() => {
   vi.clearAllMocks();
   dropAfter();

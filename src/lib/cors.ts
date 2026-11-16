@@ -10,11 +10,7 @@ function allowedOrigins(): string[] {
     .filter(Boolean);
 }
 
-/**
- * In-app origin gate (CORS headers are browser-enforced; this actually blocks).
- * "*" allows all; a disallowed Origin/Referer is rejected; a missing one can't
- * be enforced, so it's allowed and left to the honeypot / Turnstile layers.
- */
+/** Is this origin on ALLOWED_ORIGINS? "*" allows all; a missing origin cannot be checked, so it passes. */
 export function isOriginAllowed(origin: string | null): boolean {
   const allowed = allowedOrigins();
   if (allowed.includes("*")) return true;
@@ -37,28 +33,19 @@ export function requestOrigin(headers: Headers): string | null {
   return null;
 }
 
-/**
- * Is the Origin the host we're served from? The dashboard calling its own API is
- * same-origin by construction, never CSRF. ALLOWED_ORIGINS describes *other*
- * sites, so the app must not have to list itself there.
- */
+/** Is the Origin our own host? The dashboard calling its own API must pass without being listed in ALLOWED_ORIGINS. */
 function isSameOrigin(origin: string, headers: Headers): boolean {
   const host = headers.get("host");
   if (!host) return false;
   try {
-    // Host-only compare: the scheme is terminated at Cloudflare/Fly, so the
-    // forwarded request's scheme isn't a reliable match for the browser's.
+    // Host-only compare: the scheme ends at Cloudflare/Fly, so the forwarded one is unreliable.
     return new URL(origin).host === host;
   } catch {
     return false; // malformed Origin
   }
 }
 
-/**
- * Should this request pass the origin gate? Same-origin always passes; a missing
- * Origin/Referer can't be enforced, so it's allowed and left to the session
- * guard / honeypot / Turnstile layers; anything else must be on ALLOWED_ORIGINS.
- */
+/** The origin gate: same-origin and missing origins pass, anything else must be on ALLOWED_ORIGINS. */
 export function isRequestOriginAllowed(headers: Headers): boolean {
   const origin = requestOrigin(headers);
   if (!origin) return true;
@@ -66,11 +53,7 @@ export function isRequestOriginAllowed(headers: Headers): boolean {
   return isOriginAllowed(origin);
 }
 
-/**
- * Origin guard for mutating handlers (CSRF defense in depth with the sameSite=lax
- * cookie): 403 when the request's origin isn't allowed, else null. No-op when
- * ALLOWED_ORIGINS is unset ("*").
- */
+/** Origin guard for mutating handlers (CSRF defence beside the sameSite cookie): a 403, or null when allowed. */
 export function requireAllowedOrigin(headers: Headers): NextResponse | null {
   return isRequestOriginAllowed(headers) ? null : jsonError("Forbidden", 403);
 }

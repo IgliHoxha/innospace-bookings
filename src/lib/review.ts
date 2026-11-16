@@ -1,16 +1,11 @@
-// Pure helpers for asking a guest for a review: the dashboard's link and the
-// automatic email. No env access (the caller passes contact), so this module is
-// safe to import from a client component.
+// Pure helpers for asking a guest for a review. No env access, so safe to import from a client component.
 import { daysSinceEnd, hasEnded } from "./datetime";
 import { firstName } from "./templates";
 import type { Booking, ContactInfo } from "./types";
 
 type ReviewRequestLink = { channel: "whatsapp" | "email"; href: string };
 
-/**
- * Digits-only international number for a wa.me link. Null unless the input
- * carries its country code: guessing one could message a stranger.
- */
+/** Digits-only number for a wa.me link. Null without a country code: guessing one could message a stranger. */
 export function whatsappNumber(phone: string | undefined): string | null {
   const raw = (phone ?? "").trim();
   const intl = raw.startsWith("+")
@@ -19,15 +14,12 @@ export function whatsappNumber(phone: string | undefined): string | null {
       ? raw.slice(2)
       : null;
   if (intl === null) return null;
+  // A "(0)" after the country code is a trunk zero, not dialled from abroad.
   const digits = intl.replace("(0)", "").replace(/[\s().-]/g, "");
   return /^[1-9]\d{7,14}$/.test(digits) ? digits : null;
 }
 
-/**
- * The message a guest receives, or null when no review link is configured. It
- * asks for an honest review in their own words and nothing more: Google forbids
- * suggesting a rating or wording, and offering anything in return.
- */
+/** The message a guest receives, or null without a review link. Neutral by Google's rules: no rating, wording or reward. */
 export function reviewRequestText(
   booking: Booking,
   contact: ContactInfo,
@@ -43,10 +35,7 @@ export function reviewRequestText(
   ].join("\n");
 }
 
-/**
- * How long after a visit the automatic email may still go out. Older visits are
- * left to the dashboard link, so switching the feature on never mails a backlog.
- */
+/** Days after a visit the automatic email may still go out, so switching it on never mails a backlog. */
 export const REVIEW_EMAIL_WINDOW_DAYS = 7;
 
 /** True when a booking should get the automatic review email on `today`. */
@@ -69,10 +58,7 @@ export function reviewEmailPreheader(contact: ContactInfo): string {
   return `Thank you for working from ${contact.org}. If you have a minute, we would be grateful for an honest Google review, in your own words.`;
 }
 
-/**
- * The automatic email's body: the same neutral request as the dashboard link,
- * plus the promise that it is sent once. Null when no review link is configured.
- */
+/** The automatic email's body: the same request plus the promise it is sent once. Null without a review link. */
 export function reviewEmailText(
   booking: Booking,
   contact: ContactInfo,
@@ -82,11 +68,7 @@ export function reviewEmailText(
   return `${request}\n\nThis is a one-off message about your visit. We will not send it again.`;
 }
 
-/**
- * A link that opens the review request ready to send, for a confirmed booking
- * whose dates have passed: WhatsApp when the phone allows it, otherwise email.
- * Null when there is nothing to ask yet or no way to reach the guest.
- */
+/** A ready-to-send review link for a confirmed, ended booking: WhatsApp if the phone allows, else email, else null. */
 export function reviewRequestLink(
   booking: Booking,
   contact: ContactInfo,

@@ -1,6 +1,4 @@
-// The dashboard's own calls (src/app/dashboard/api.ts), sent through the real
-// handlers to a real database: what the client sends is what the server
-// understands.
+// The dashboard's own calls (src/app/dashboard/api.ts), run through the real handlers and a real database.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, params, resetApp, sessionToken } from "../helpers/app";
 import { SESSION_COOKIE } from "@/lib/auth";
@@ -35,8 +33,7 @@ beforeEach(async () => {
   api = await import("@/app/dashboard/api");
   token = sessionToken();
   requested = [];
-  // The browser's fetch: each call goes to the handler that serves its path,
-  // carrying the session cookie as the browser would.
+  // The browser's fetch: each call goes to the handler serving its path, with the session cookie.
   vi.stubGlobal("fetch", (url: string, init: RequestInit = {}) => {
     const method = init.method ?? "GET";
     requested.push(`${method} ${url}`);

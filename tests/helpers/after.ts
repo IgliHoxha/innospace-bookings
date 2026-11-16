@@ -1,6 +1,4 @@
-// Next's after() needs a live request, which a handler called directly does not
-// have. The suite swaps it for this queue (see tests/setup.ts): work waits here
-// until a test asks for it, as the real one waits for the response to be sent.
+// Stand-in for Next's after(), which needs a live request: work waits in this queue until a test asks for it.
 type Task = () => unknown;
 
 const queue: Task[] = [];

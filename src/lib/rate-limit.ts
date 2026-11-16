@@ -1,6 +1,4 @@
-// In-memory brute-force guard for the dashboard login, keyed by client IP. One
-// long-lived Node process (a single Fly machine), so a module-level Map needs no
-// external store; state resetting on redeploy is fine for login throttling.
+// In-memory login brute-force guard keyed by client IP. One Fly machine, so a module-level Map is enough.
 
 import { requireIntEnv } from "./env-app";
 
@@ -118,11 +116,7 @@ function escalate(a: Attempt, now: number): RateStatus {
   return locked(seconds);
 }
 
-/**
- * Record a failed login. When failures reach the configured threshold the IP is
- * locked out; each successive lockout lasts longer (base × lockout count), so a
- * persistent attacker faces exponentially diminishing return.
- */
+/** Record a failed login: at the threshold the IP is locked out, and each lockout lasts longer than the last. */
 export function registerFailure(key: string): RateStatus {
   const now = Date.now();
   prune(now);
@@ -146,11 +140,7 @@ export function registerSuccess(key: string): void {
   attempts.delete(key);
 }
 
-/**
- * Best-effort client IP. Behind Cloudflare → Fly, the real IP is in
- * `cf-connecting-ip` / `fly-client-ip`; fall back to the first `x-forwarded-for`
- * hop. Returns a stable string so unknown clients still share one bucket.
- */
+/** Best-effort client IP from the Cloudflare and Fly headers; "unknown" keeps unidentified clients in one bucket. */
 export function clientKey(headers: Headers): string {
   return (
     headers.get("cf-connecting-ip") ||

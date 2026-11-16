@@ -1,5 +1,4 @@
-// The dashboard table's sortable columns. A plain module (like pagination.ts) so
-// the API route, the db layer and the client component share one definition.
+// The dashboard table's sortable columns, in a plain module shared by the route, the db layer and the client.
 
 export const BOOKING_SORTS = [
   "createdAt",

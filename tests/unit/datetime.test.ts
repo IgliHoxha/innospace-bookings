@@ -12,8 +12,7 @@ import {
   zonedStamp,
 } from "@/lib/datetime";
 
-// The table's range separator is an arrow. Build it from its code point so no
-// literal non-ASCII glyph lands in this source.
+// The range separator is an arrow, built from its code point so no non-ASCII glyph lands in this source.
 const ARROW = String.fromCharCode(0x2192);
 
 describe("pad2", () => {

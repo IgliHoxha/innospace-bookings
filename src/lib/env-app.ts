@@ -1,6 +1,4 @@
-// Central env access. Required vars throw at read time if unset/blank (no silent
-// defaults) and are read lazily so tests can vi.stubEnv them. Optional vars are
-// feature flags (unset = feature off) or detail lines that are simply omitted.
+// Central env access, read lazily so tests can stub it: required vars throw when unset, optional ones are flags.
 import type { ContactInfo, Pricing } from "./types";
 
 /** A required string env var. Throws if unset or blank. */
@@ -30,8 +28,7 @@ export function optionalEnv(name: string): string | undefined {
   return v ? v : undefined;
 }
 
-// Public, non-secret URLs. Optional so a deploy without them still renders the
-// email logo and footer link; set them to point at another environment.
+// Public, non-secret URLs: optional, so a deploy without them still renders the email logo and footer link.
 const DEFAULT_APP_BASE_URL = "https://booking.innospacetirana.com";
 const DEFAULT_WEBSITE_URL = "https://innospacetirana.com";
 
@@ -68,11 +65,7 @@ export function getPricingFromEnv(): Pricing {
   };
 }
 
-/**
- * Business contact block for emails. Server-only: BUSINESS_* / EMAIL_SIGNOFF_NAME
- * are never exposed to the browser. Only the org name and website are required;
- * every other line is optional and omitted from the footer when unset.
- */
+/** Business contact block for emails. Server-only; only the org name is required, unset lines are omitted. */
 export function getContactFromEnv(): ContactInfo {
   return {
     org: requireEnv("BUSINESS_NAME"),

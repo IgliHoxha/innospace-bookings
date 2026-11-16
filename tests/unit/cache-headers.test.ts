@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import nextConfig from "../../next.config.mjs";
 
-// The Cache-Control table lives in next.config.mjs, so read it the way Next
-// does: call headers() and resolve each path against the rules it returns.
+// The Cache-Control table lives in next.config.mjs, so read it as Next does: call headers() and match each path.
 type Rule = Awaited<ReturnType<NonNullable<typeof nextConfig.headers>>>[number];
 
 async function rules(): Promise<Rule[]> {
@@ -11,8 +10,7 @@ async function rules(): Promise<Rule[]> {
   return nextConfig.headers();
 }
 
-// Approximates Next's matcher for the two source forms this config uses: a
-// literal path, and a trailing `/:name*` wildcard (which matches zero segments).
+// Approximates Next's matcher for the two forms used: a literal path and a trailing `/:name*` wildcard.
 function matches(source: string, path: string): boolean {
   const pattern = source
     .replace(/\./g, "\\.")
@@ -42,8 +40,7 @@ const PRIVATE_PATHS = [
   "/api/bookings",
   "/api/bookings/9f1c-abc",
   "/api/login",
-  // Nothing serves this today: the wildcard is what keeps a future endpoint
-  // private by default rather than by remembering to add a rule.
+  // Nothing serves this today: the wildcard keeps a future endpoint private by default.
   "/api/something-added-later",
 ];
 
@@ -95,8 +92,7 @@ describe("cache headers", () => {
     for (const rule of await rules()) {
       const value = rule.headers[0].value;
       if (!value.includes("s-maxage")) continue;
-      // A visitor's own disk must never outlive the edge copy by much: the
-      // longest private hold here is a day.
+      // A visitor's disk must never outlive the edge copy by much: the longest private hold is a day.
       const maxAge = Number(/(?:^|[ ,])max-age=(\d+)/.exec(value)?.[1]);
       expect(maxAge).toBeLessThanOrEqual(86400);
     }

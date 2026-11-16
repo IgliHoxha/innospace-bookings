@@ -1,11 +1,8 @@
 import type { BookingFilter } from "./types";
 
-// Shared by the server page and the client dashboard. Kept in a plain module
-// (NOT the "use client" component) so the server imports the real values
-// rather than client-reference proxies.
+// A plain module, not the "use client" component, so the server imports real values rather than client proxies.
 export const PAGE_SIZE = 25;
-// The tab the dashboard opens on. Not "new": that one is empty whenever every
-// request has been answered, which left the opening screen blank.
+// The tab the dashboard opens on. Not "new": that is empty once every request is answered.
 export const INITIAL_FILTER: BookingFilter = "all";
 
 /** How many pages `total` rows fill. An empty list still has its first page. */

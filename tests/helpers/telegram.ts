@@ -48,10 +48,7 @@ export function sentMessage(
 /** The id Telegram gives the owner's message in replyUpdate. */
 export const REPLY_MESSAGE_ID = 77;
 
-/**
- * The update Telegram posts when `text` is sent in `chat`, as a reply to the
- * message whose text is `alert` when one is given.
- */
+/** The update Telegram posts when `text` is sent in `chat`, as a reply to `alert` when one is given. */
 export function replyUpdate(
   text: string,
   alert?: string,

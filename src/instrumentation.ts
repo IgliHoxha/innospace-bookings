@@ -1,5 +1,4 @@
-// Next calls this once per server start. The Fly machine stops when idle and
-// cold-boots on the next request, so a server start is the only clock this app has.
+// Next calls this once per server start. The Fly machine cold-boots on each wake, so that is this app's only clock.
 export async function register(): Promise<void> {
   // A positive check, so the bundler drops the import (and SQLite) from the edge build.
   if (process.env.NEXT_RUNTIME === "nodejs") {

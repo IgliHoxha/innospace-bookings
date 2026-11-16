@@ -5,10 +5,7 @@ import { handleTelegramUpdate, isTelegramWebhook } from "@/lib/telegram-reply";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Telegram posts every message sent to the bot here. There is no session: the
- * caller is known by the secret the webhook was registered with.
- */
+/** Telegram posts every message sent to the bot here. No session: the caller is known by the webhook's secret. */
 export async function POST(req: NextRequest) {
   if (!isTelegramWebhook(req.headers.get("x-telegram-bot-api-secret-token"))) {
     return jsonError("Unauthorized", 401);

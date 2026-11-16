@@ -1,5 +1,4 @@
-// The three things a row's buttons can do to a booking. `verb` names the button
-// and titles its prompt; `email` is the email that goes out, null for none.
+// A row's three actions. `verb` names the button and its prompt; `email` is the email sent, null for none.
 export const ROW_ACTIONS = [
   {
     status: "confirmed",

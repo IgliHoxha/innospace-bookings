@@ -1,9 +1,4 @@
-/**
- * Answers to a booking alert: the owner replies "yes", "no" or "delete" in
- * Telegram and the booking is confirmed, cancelled or deleted as the dashboard
- * would do it. Feature-flagged by TELEGRAM_WEBHOOK_SECRET, the secret Telegram
- * sends back with every update once the webhook is registered with it.
- */
+/** Acts on the owner's "yes", "no" or "delete" reply to a booking alert. Feature-flagged by TELEGRAM_WEBHOOK_SECRET. */
 import { safeEqual } from "./auth";
 import { changeBookingStatus, type StatusChange } from "./booking-actions";
 import { getBooking } from "./db";
@@ -31,6 +26,7 @@ export function isTelegramWebhook(secret: string | null): boolean {
 
 /** The status a reply asks for, or null when it is not one of the three words. */
 export function replyStatus(text: string): ReplyStatus | null {
+  // "Yes!" and "no." count as the word.
   const word = text
     .trim()
     .toLowerCase()
@@ -65,8 +61,7 @@ async function answerTo(text: string, alert: unknown): Promise<string | null> {
 
   const booking = await getBooking(id);
   if (!booking) return GONE;
-  // The dashboard disables the button for the status a booking already has.
-  // Here that also stops an update Telegram delivers twice emailing twice.
+  // As the dashboard disables that button. Also stops a redelivered update emailing twice.
   if (booking.status === status) return `This booking is already ${status}.`;
 
   const changed = await changeBookingStatus(id, status);
@@ -83,10 +78,7 @@ type Update = {
   };
 };
 
-/**
- * Carries out one update from the webhook and answers in the chat. Never
- * throws: the route must answer 200, or Telegram sends the same update again.
- */
+/** Carries out one webhook update and answers in the chat. Never throws: a non-200 makes Telegram resend it. */
 export async function handleTelegramUpdate(update: unknown): Promise<void> {
   try {
     const message = (update as Update | null)?.message;

@@ -1,7 +1,4 @@
-// SQLite (better-sqlite3) DB on the persistent volume. One file, indexed, ACID.
-// Two tables: `guests` holds what is true of a person (their email address and
-// whether they were asked for a review), `bookings` holds each request and
-// points at its guest.
+// SQLite storage: `guests` holds a person's email and review stamps, `bookings` each request and its guest.
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
@@ -39,9 +36,7 @@ const TABLE_BODY = `(
 
 type Row = Record<string, string | number | null>;
 
-// Ordered schema migrations keyed by target `PRAGMA user_version`: each runs once,
-// in a transaction, on any DB below its version, then bumps it. To change the
-// schema, append a new { version: N+1, up } entry - never edit a shipped one.
+// Ordered migrations keyed by `PRAGMA user_version`: append a new entry, never edit a shipped one.
 type Migration = { version: number; up: (db: Database.Database) => void };
 
 const MIGRATIONS: Migration[] = [
@@ -49,8 +44,7 @@ const MIGRATIONS: Migration[] = [
     version: 1,
     up: (db) => {
       db.exec(`CREATE TABLE IF NOT EXISTS bookings ${TABLE_BODY};`);
-      // Serves the list's ORDER BY createdAt DESC: reverse-scanned, so LIMIT
-      // stops early without a sort.
+      // Serves ORDER BY createdAt DESC: reverse-scanned, so LIMIT stops early without a sort.
       db.exec(
         `CREATE INDEX IF NOT EXISTS idx_bookings_createdAt ON bookings(createdAt);`,
       );
@@ -69,8 +63,7 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // Moves the email address and the review stamps off the booking and onto one
-    // `guests` row per person, which every booking by that person points at.
+    // Moves the email and review stamps off the booking onto one `guests` row per person.
     version: 4,
     up: (db) => {
       db.exec(`
@@ -122,9 +115,7 @@ const MIGRATIONS: Migration[] = [
   {
     version: 5,
     up: (db) => {
-      // Serves a status tab's newest-first page, the view the dashboard opens
-      // on. The createdAt index alone has to walk every booking whenever the
-      // tab holds less than a page, which is the usual state of "new".
+      // Serves a status tab's newest-first page: the createdAt index alone walks every booking for a short tab.
       db.exec(
         `CREATE INDEX IF NOT EXISTS idx_bookings_status_createdAt ON bookings(status, createdAt);`,
       );
@@ -143,8 +134,7 @@ function migrate(db: Database.Database): void {
   const current = db.pragma("user_version", { simple: true }) as number;
   for (const m of MIGRATIONS) {
     if (m.version <= current) continue;
-    // DDL + the version bump in one transaction: a failed migration rolls back
-    // wholesale, so we never leave the DB half-migrated.
+    // DDL and the version bump share a transaction, so a failed migration leaves nothing half-done.
     db.transaction(() => {
       m.up(db);
       db.pragma(`user_version = ${m.version}`);
@@ -152,9 +142,7 @@ function migrate(db: Database.Database): void {
   }
 }
 
-// Lazy singleton: opened on the first query, not at import (never runs at build).
-// _stmts caches prepared statements for this connection (see prep); both reset
-// together, so the cache can never outlive the connection it was compiled against.
+// Lazy singleton, opened on the first query (never at build). _stmts is its statement cache and resets with it.
 let _db: Database.Database | null = null;
 let _stmts: Map<string, Database.Statement> | null = null;
 function getDb(): Database.Database {
@@ -165,17 +153,14 @@ function getDb(): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
   migrate(db);
-  // Off by default in SQLite. Switched on only after migrating, since a
-  // migration that rebuilds a table needs it off.
+  // Switched on only after migrating: a migration that rebuilds a table needs it off.
   db.pragma("foreign_keys = ON");
   _db = db;
   _stmts = new Map();
   return db;
 }
 
-// A prepared statement compiled once per connection and reused. Pass only SQL
-// drawn from a fixed set of texts: one that grows with its input (a placeholder
-// per id) would fill the cache with one-off entries, so that keeps using db.prepare.
+// A statement compiled once per connection. Only for fixed SQL texts: per-input SQL would flood the cache.
 function prep(sql: string): Database.Statement {
   const db = getDb();
   let stmt = _stmts!.get(sql);
@@ -205,8 +190,7 @@ function fromRow(r: Row): Booking {
   };
 }
 
-// A booking as the app reads it: the row plus its guest's address and review
-// stamps. `from`/`to` are SQL reserved words - keep them quoted.
+// A booking plus its guest's email and review stamps. `from`/`to` are SQL reserved words: keep them quoted.
 const BOOKINGS_WITH_GUEST =
   "FROM bookings b LEFT JOIN guests g ON g.id = b.guestId";
 const BOOKING_ROWS = `SELECT b.id, b.createdAt, b.status, b.source, b.fullName,
@@ -233,12 +217,10 @@ function guestIdFor(email: string | null): number | bigint {
     .lastInsertRowid;
 }
 
-// The default order, and the tie-break under any column sort: the newest
-// request on top.
+// The default order, and the tie-break under any column sort: newest request first.
 const NEWEST_FIRST = "createdAt DESC";
 
-// What each sortable column orders by. Only these fixed strings reach the SQL
-// text: a sort key picks one and is never interpolated itself.
+// What each sortable column orders by. Only these fixed strings reach the SQL: a sort key is never interpolated.
 const SORT_SQL: Record<BookingSort, string> = {
   createdAt: "createdAt",
   guest: "fullName COLLATE NOCASE",
@@ -350,8 +332,7 @@ export async function queryBookings(
       ? counts.total
       : counts[filter];
 
-  // Cached like the rest: filter, search and sort only ever combine into a few
-  // dozen distinct texts.
+  // Safe to cache: filter, search and sort only combine into a few dozen distinct texts.
   const rows = prep(
     `${BOOKING_ROWS} ${whereSql} ${orderBy(q.sort, q.dir)} LIMIT ? OFFSET ?`,
   ).all(...params, pageSize, (page - 1) * pageSize) as Row[];
@@ -433,11 +414,7 @@ export async function listReviewCandidates(): Promise<Booking[]> {
   return rows.map(fromRow);
 }
 
-/**
- * Reserve a booking's guest for the automatic review email by stamping them
- * first, so two overlapping runs or two bookings by one person can never both
- * send. False when the booking is not confirmed or its guest was already asked.
- */
+/** Stamps the guest before the review email is sent, so two runs can never both send. False when not claimable. */
 export async function claimReviewEmail(
   id: string,
   at: string,
@@ -457,10 +434,7 @@ export async function releaseReviewEmail(id: string): Promise<void> {
   ).run({ id });
 }
 
-/**
- * Stamp (or clear) when a booking's guest was asked for a review, which shows on
- * every booking of theirs. Null for a missing id.
- */
+/** Stamp (or clear) when a booking's guest was asked for a review. Null for a missing id. */
 export async function setReviewAsked(
   id: string,
   asked: boolean,

@@ -1,8 +1,4 @@
-/**
- * Cloudflare Turnstile verification, feature-flagged by TURNSTILE_SECRET_KEY:
- * unset skips it entirely, set rejects a missing or invalid token. So publish the
- * widget's site key on the website at the same time you set this secret.
- */
+/** Cloudflare Turnstile, feature-flagged by TURNSTILE_SECRET_KEY: unset skips it, set rejects a bad or missing token. */
 import { optionalEnv } from "./env-app";
 
 const SITEVERIFY_URL =

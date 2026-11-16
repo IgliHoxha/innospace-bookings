@@ -1,5 +1,4 @@
-// The dashboard's calls to this app's own API, kept together so no component
-// builds a URL or a request body by hand.
+// The dashboard's calls to this app's own API, together so no component builds a URL or body by hand.
 import type { BookingPage } from "@/lib/db";
 import type { ListView } from "@/lib/list-view";
 import { PAGE_SIZE } from "@/lib/pagination";

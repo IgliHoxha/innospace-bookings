@@ -1,7 +1,5 @@
 :root {
-  /* The UI is light-only, so say so: without this a dark-mode OS makes the browser
-     render native controls (login inputs, scrollbars) in dark chrome on these
-     white surfaces. */
+  /* Light-only UI: without this a dark-mode OS renders native controls (inputs, scrollbars) in dark chrome. */
   color-scheme: light;
   /* Innospace Tirana brand palette - matches innospacetirana.com */
   --brand: #25bdad;
@@ -105,9 +103,7 @@ a {
   font-size: 15px;
   padding-left: 10px;
   border-left: 1px solid var(--border);
-  /* Align with the "innospace" wordmark. Measured from logo.svg: the wordmark's
-     optical centre (~528.4) sits ~0.95px above the mark's centre (540) at 26px
-     render height, so nudge "Bookings" up ~1px to share its line. */
+  /* Nudged up ~1px to share the wordmark's line: its optical centre sits ~0.95px above the mark's at 26px. */
   transform: translateY(-1px);
 }
 
@@ -827,7 +823,7 @@ tr:last-child td {
   width: 100%;
   margin-top: 4px;
 }
-/* Warning/error alert — scoped tighter than `.login-card p` so the red wins. */
+/* Warning/error alert, scoped tighter than `.login-card p` so the red wins. */
 .login-card .error,
 .error {
   display: flex;

@@ -5,8 +5,7 @@ import { requireEnv } from "./env-app";
 export const SESSION_COOKIE = "innospace_session";
 const PAYLOAD = "authenticated";
 
-// Sessions expire after this long. The signed token carries its own expiry, so
-// a leaked cookie stops working after TTL even if its max-age is tampered with.
+// The signed token carries its own expiry, so a leaked cookie dies after the TTL even if max-age is tampered with.
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 function secret(): string {
@@ -41,6 +40,7 @@ export function verifySessionToken(token: string | undefined | null): boolean {
   return exp > Date.now();
 }
 
+/** Constant-time string compare, so timing does not reveal how much matched. */
 export function safeEqual(input: string, expected: string): boolean {
   const a = Buffer.from(input);
   const b = Buffer.from(expected);

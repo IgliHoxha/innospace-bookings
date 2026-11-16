@@ -1,5 +1,4 @@
-// Single source of truth for booking statuses. The type, the API validators,
-// and the DB CHECK constraint are all derived from this array.
+// Single source of truth for statuses: the type, the API validators and the DB CHECK all derive from this array.
 export const BOOKING_STATUSES = [
   "new",
   "confirmed",
@@ -9,8 +8,7 @@ export const BOOKING_STATUSES = [
 
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
-// What the dashboard list can be narrowed to: one status, or "all" (every
-// booking that is not deleted).
+// What the list can be narrowed to: one status, or "all" (everything not deleted).
 export const BOOKING_FILTERS = ["all", ...BOOKING_STATUSES] as const;
 
 export type BookingFilter = (typeof BOOKING_FILTERS)[number];
@@ -55,8 +53,7 @@ export interface Pricing {
   plans: Partial<Record<BookingPlan, string>>;
   // A pass priced in a currency of its own (the Day Pass is in lek); unset, `currency` applies.
   planCurrencies?: Partial<Record<BookingPlan, string>>;
-  // Event Room is billed by the hour (3h min), the half day or the day, and
-  // may be priced in a currency of its own (`currency` falls back to the above).
+  // Event Room is billed per hour (3h minimum), half day or day, optionally in its own currency.
   eventRoom?: {
     currency?: string;
     hour?: string;
@@ -65,10 +62,7 @@ export interface Pricing {
   };
 }
 
-/**
- * Business contact / access details for the email footer, built from BUSINESS_*
- * (see env-app). Only org + url are guaranteed; any unset field is omitted.
- */
+/** Business contact details for the email footer, built from BUSINESS_* (see env-app). Only org and url are guaranteed. */
 export interface ContactInfo {
   org: string;
   url: string;

@@ -65,9 +65,7 @@ describe("requireAllowedOrigin", () => {
 });
 
 describe("same-origin requests", () => {
-  // Regression: the dashboard calls its own API from the host it is served on.
-  // ALLOWED_ORIGINS describes *other* sites, so the app must never have to list
-  // itself there or it 403s every one of its own mutations.
+  // Regression: the dashboard calls its own API same-origin, so the app must never have to list itself.
   const dashboard = new Headers({
     origin: "https://booking.example.com",
     host: "booking.example.com",

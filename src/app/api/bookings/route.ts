@@ -34,8 +34,7 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const cors = corsHeaders(req.headers.get("origin"));
 
-  // Server-side origin gate: reject browser requests from origins not on the
-  // ALLOWED_ORIGINS list. No-op while that list is "*" (the default).
+  // Origin gate: refuse browser requests from origins not on ALLOWED_ORIGINS (a no-op while it is "*").
   if (!isRequestOriginAllowed(req.headers)) {
     return jsonError("Forbidden.", 403, cors);
   }
@@ -43,15 +42,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as Record<string, unknown>;
 
-    // Honeypot: `company` is a hidden field real users never fill. If a bot
-    // auto-fills it, silently accept (so it doesn't retry) but store nothing.
+    // Honeypot: real users never see `company`. A bot that fills it gets a 201, so it won't retry, and nothing is stored.
     if (typeof body.company === "string" && body.company.trim() !== "") {
       console.warn("[bookings] honeypot tripped - dropping submission");
       return NextResponse.json({ ok: true }, { status: 201, headers: cors });
     }
 
-    // Turnstile: no-op until TURNSTILE_SECRET_KEY is set; then a missing or
-    // invalid token is rejected.
+    // Turnstile: a no-op until TURNSTILE_SECRET_KEY is set, then a missing or invalid token is refused.
     const turnstile = await verifyTurnstile(
       typeof body.turnstileToken === "string" ? body.turnstileToken : undefined,
       req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for"),
@@ -127,6 +124,7 @@ export async function DELETE(req: NextRequest) {
   return NextResponse.json({ ok: true, removed });
 }
 
+/** The posted fields, trimmed. A blank one is dropped and a missing plan becomes the Day Pass. */
 function normalize(body: Record<string, unknown>): BookingInput {
   const str = (v: unknown) =>
     v === undefined || v === null ? undefined : String(v).trim() || undefined;

@@ -5,8 +5,7 @@ import type { Booking } from "@/lib/types";
 import { emailPreheader } from "@/lib/templates";
 import { getContactFromEnv } from "@/lib/env-app";
 
-// Resend is stubbed at the class level so no request ever leaves the process;
-// `send` is shared across instances so the lazy singleton is still observable.
+// Resend is stubbed at the class level; `send` is shared across instances so the lazy singleton stays observable.
 const send = vi.fn().mockResolvedValue({ data: null, error: null });
 vi.mock("resend", () => ({
   Resend: class {
@@ -72,8 +71,7 @@ describe("email logo", () => {
     expect(await sentHtml()).toContain('alt="Innospace Tirana"');
   });
 
-  // Gmail can recolour HTML but never the inside of an image, so the mark is the
-  // only part shipped as artwork: teal, which reads on either background.
+  // Gmail can recolour HTML but not an image, so only the teal mark ships as artwork.
   it("ships a teal-only mark asset with no wordmark and no media query", () => {
     const svg = readFileSync(
       join(process.cwd(), "public", "logo-mark.svg"),
@@ -84,11 +82,7 @@ describe("email logo", () => {
     expect(svg).not.toContain("prefers-color-scheme");
   });
 
-  // The point of the whole exercise: the wordmark is HTML text inked neutral, so
-  // a dark-mode client inverts it to white exactly as it does the body copy.
-  // A <table> here made Gmail cut the bordered card container in two, rendering
-  // the header as a detached box above a "show trimmed content" expander. Keep
-  // the header markup flat: inline spans only.
+  // The wordmark is neutral-ink HTML text so dark mode inverts it. Inline spans only: a <table> made Gmail split the card.
   it("builds the header without a table, so the card is not split", async () => {
     const html = await sentHtml();
     expect(html).not.toContain("<table");
@@ -121,8 +115,7 @@ describe("email logo", () => {
 });
 
 describe("body copy colour", () => {
-  // A mail client that dark-mode inverts keeps hue and flips lightness, so the
-  // old plum ink (#524552) came back pink instead of white. Neutral ink only.
+  // Dark-mode inversion keeps hue, so the old plum ink (#524552) came back pink. Neutral ink only.
   it("inks paragraphs with a neutral black, never the brand plum", async () => {
     const html = await sentHtml();
     expect(html).toContain("color:#000000;font-size:14px");
@@ -320,8 +313,7 @@ describe("linkified body", () => {
   });
 });
 
-// Gmail builds its snippet from the first text in the body, which used to be the
-// wordmark spans and showed up in the inbox as "innospaceTIRANA".
+// Gmail builds its snippet from the first body text, which used to be the wordmark: "innospaceTIRANA".
 describe("the preheader", () => {
   it("comes before the logo lockup, or the client scrapes the wordmark instead", async () => {
     const html = await sentHtml();
@@ -352,14 +344,12 @@ describe("the preheader", () => {
     }
   });
 
-  // Without the filler the client runs out of preheader and reads on into the
-  // logo, showing the wordmark anyway.
+  // Without the filler the client runs out of preheader and reads on into the logo.
   it("pads past the length a snippet reads", async () => {
     expect(await sentHtml()).toContain("&#847;&#65279;".repeat(60));
   });
 
-  // The usual recipe pads with U+2007 FIGURE SPACE, a real space: Gmail drew
-  // thirty of them as a thirty-space hole in the notification.
+  // The usual U+2007 padding is a real space: Gmail drew thirty of them as a gap in the notification.
   it("pads with zero-width characters only, so it leaves no visible gap", async () => {
     const hidden =
       /<div style="display:none;[^"]*">([\s\S]*?)<\/div>/.exec(
@@ -384,8 +374,7 @@ describe("the preheader", () => {
     expect(htmlOf()).toContain("Cancelled: Day Pass for 1 July 2026");
   });
 
-  // An admin can rewrite the body from the dashboard, so the snippet cannot be
-  // taken from it: it would otherwise open with whatever they typed.
+  // An admin can rewrite the body, so the snippet must not be taken from it.
   it("ignores a custom body and keeps describing the booking", async () => {
     await email.sendCustomerStatusEmail(
       BOOKING,
@@ -395,8 +384,7 @@ describe("the preheader", () => {
     expect(htmlOf()).toContain("Confirmed: Day Pass");
   });
 
-  // The org is env copy, so an angle bracket in it would close the hidden div
-  // early and spill the rest of the preheader into the visible email.
+  // The org is env copy: an angle bracket in it would close the hidden div and spill the preheader.
   it("escapes the text it is given, so no markup can break out of the hidden div", async () => {
     vi.stubEnv("BUSINESS_NAME", "</div><b>Sale!</b>");
     const hidden =
@@ -408,8 +396,7 @@ describe("the preheader", () => {
   });
 });
 
-// Env copy reaches the HTML verbatim, so a legitimate "&" or "<" in a business
-// name must not become markup, and a quote must not break out of an attribute.
+// Env copy reaches the HTML verbatim, so "&", "<" and quotes in a business name must be escaped.
 describe("escaping the env-supplied copy", () => {
   it("escapes the org in the footer and in the logo's alt text", async () => {
     vi.stubEnv("BUSINESS_NAME", 'Smith & Sons <"Tirana">');
@@ -454,8 +441,7 @@ describe("the accent rule under the header", () => {
     );
   });
 
-  // An empty div still gets a line box, so a client's own line-height would
-  // thicken what is meant to be a 2px hairline.
+  // An empty div still gets a line box, so a client's line-height would thicken the 2px rule.
   it("pins its line-height and font-size so no client can fatten it", async () => {
     const rule =
       /<div style="height:2px;[^"]*">.*?<\/div>/.exec(await sentHtml())?.[0] ??
@@ -473,8 +459,7 @@ describe("the accent rule under the header", () => {
     );
   });
 
-  // Two stacked lines a pixel apart read as one furred edge, and at 2px the grey
-  // one shows through rather than sitting behind.
+  // Two lines a pixel apart read as one furred edge.
   it("is the only thing closing the header, which carries no border of its own", async () => {
     const html = await sentHtml();
     expect(html).toContain('<div style="padding:22px 28px">');

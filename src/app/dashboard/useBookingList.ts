@@ -13,14 +13,10 @@ import type { BookingSort } from "@/lib/sort";
 import type { BookingFilter } from "@/lib/types";
 import { fetchBookings } from "./api";
 
-/**
- * The list's view (filter, search, sort, page) and the page of bookings the
- * server returns for it. The first page comes from the server render.
- */
+/** The list's view and the page of bookings the server returns for it. The first page comes from the server render. */
 export function useBookingList(initialData: BookingPage) {
   const [data, setData] = useState<BookingPage>(initialData);
-  // One state for the whole view: a change that also resets the page is then a
-  // single update, so the list is fetched once for it.
+  // One state for the whole view, so a change that resets the page is a single update and a single fetch.
   const [view, setView] = useState<ListView>(INITIAL_VIEW);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);

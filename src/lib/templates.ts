@@ -1,6 +1,4 @@
-// Pure email-template helpers shared by the mailer and the dashboard preview,
-// so the preview matches what's actually sent. No env access (the caller passes
-// pricing + contact), so this module is safe to import from a client component.
+// Pure email-template helpers shared by the mailer and the dashboard preview. No env access, so client-safe.
 import { formatDateRangeLong } from "./datetime";
 import type {
   Booking,
@@ -24,8 +22,7 @@ const PLAN_META: Record<BookingPlan, { label: string; period: string }> = {
   },
 };
 
-// Sign-off + contact/access block for the confirmation email. Only the details
-// actually configured appear; the org name always closes it.
+// Sign-off and contact block for the confirmation email: only configured details appear, the org name closes it.
 function signOff(contact: ContactInfo): string[] {
   const lines: string[] = [];
   if (contact.name) lines.push(contact.name);
@@ -117,20 +114,14 @@ export function emailHeading(status: EmailStatus): string {
   return status === "confirmed" ? "Booking confirmed" : "Booking cancelled";
 }
 
-/**
- * The snippet a notification shows beneath the subject. Without one the client
- * scrapes the first text in the body, which is the wordmark, and shows the two
- * spans run together as "innospaceTIRANA". It names the org in prose so the
- * preview says something a recipient can act on.
- */
+/** The snippet under the subject. Without one, clients scrape the wordmark and show "innospaceTIRANA". */
 export function emailPreheader(
   booking: Booking,
   status: EmailStatus,
   contact: ContactInfo,
 ): string {
   const what = `${bookingTypeLabel(booking)} for ${datesText(booking)} at ${contact.org}.`;
-  // Long enough to fill the snippet by itself: padding cannot be relied on, and
-  // whatever the snippet has room for after this is scraped from the body.
+  // Long enough to fill the snippet alone: padding cannot be relied on.
   return status === "cancelled"
     ? `Cancelled: ${what} We were not able to confirm these dates, and we would gladly look at another time whenever suits you.`
     : `Confirmed: ${what} Everything we have for your visit is below, and you can reply to this email if anything needs changing.`;

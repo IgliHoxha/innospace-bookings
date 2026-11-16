@@ -1,5 +1,4 @@
-// The dashboard list's view: the filter, search, sort and page on screen. A
-// plain module (like sort.ts) so the hook's state changes are unit tested.
+// The dashboard list's view (filter, search, sort, page) as a plain module, so its changes are unit tested.
 import { INITIAL_FILTER } from "./pagination";
 import {
   INITIAL_SORT,
@@ -24,9 +23,7 @@ export const INITIAL_VIEW: ListView = {
   page: 1,
 };
 
-// Every change returns the same object when nothing changed, so the list is not
-// fetched again. A new filter, search or sort moves to the first page in the
-// same step: as two steps, the list was fetched once for each.
+// Each change returns the same object when nothing changed, and resets the page in the same step: one fetch, not two.
 
 export function withFilter(view: ListView, filter: BookingFilter): ListView {
   return view.filter === filter ? view : { ...view, filter, page: 1 };

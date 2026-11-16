@@ -18,8 +18,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// The alert is handed the row createBooking returns, whose address is joined in
-// from the guests table rather than stored on the booking.
+// The alert gets the row createBooking returns, whose address is joined in from the guests table.
 describe("the alert for a stored booking", () => {
   it("reports the booking exactly as the database returns it", async () => {
     const fetchMock = stubTelegram();

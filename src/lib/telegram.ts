@@ -1,8 +1,4 @@
-/**
- * Telegram alert to the owner when a booking arrives, feature-flagged by
- * TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID: either one unset skips it.
- * TELEGRAM_WEBHOOK_SECRET lets the owner answer an alert (see telegram-reply.ts).
- */
+/** Telegram alert to the owner for a new booking. Skipped unless TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are both set. */
 import { appBaseUrl, optionalEnv } from "./env-app";
 import { formatDateRangeLong } from "./datetime";
 import { bookingTypeLabel } from "./templates";
@@ -10,12 +6,10 @@ import type { Booking } from "./types";
 
 const API_URL = "https://api.telegram.org";
 
-// The alert runs after the guest has their answer, and a slow Telegram is
-// still given up on, so stalled requests cannot pile up behind it.
+// The alert runs after the response; a slow Telegram is still given up on so requests cannot pile up.
 const TIMEOUT_MS = 3000;
 
-// Telegram refuses a message over 4096 characters and the form bounds nothing,
-// so each field is cut short enough to keep the whole alert inside that.
+// Telegram refuses messages over 4096 characters and the form bounds nothing, so each field is clipped.
 const FIELD_MAX = 200;
 const NOTE_MAX = 1000;
 
@@ -35,11 +29,7 @@ function clip(value: string | undefined, max: number): string {
     : chars.join("");
 }
 
-/**
- * The alert's text: one labelled line per detail the guest gave. Sent plain,
- * with no parse_mode: a guest's stray "_" or "<" would otherwise make Telegram
- * refuse the whole message.
- */
+/** The alert's text, one line per detail given. Sent without parse_mode: a guest's stray "_" or "<" would be refused. */
 export function newBookingText(booking: Booking): string {
   const details: [label: string, value: string][] = [
     ["Full name", clip(booking.fullName, FIELD_MAX)],
@@ -57,8 +47,7 @@ export function newBookingText(booking: Booking): string {
       .map(([label, value]) => `${label}: ${value}`),
     "",
     ...(repliesEnabled() ? [REPLY_HINT, ""] : []),
-    // Always the last line, where nothing a guest typed can follow it: a reply
-    // is matched to its booking by the id this link ends on (see bookingIdIn).
+    // Must stay the last line: a reply finds its booking by this link's id, and guest text cannot follow it.
     `${appBaseUrl()}/dashboard#${booking.id}`,
   ].join("\n");
 }
@@ -106,10 +95,7 @@ async function send(message: () => Record<string, unknown>): Promise<boolean> {
   }
 }
 
-/**
- * Sends the alert. Resolves true only when Telegram accepted it and never
- * throws, so a failed alert cannot fail the booking that caused it.
- */
+/** Sends the alert. True only when Telegram accepted it; never throws, so it cannot fail the booking. */
 export async function notifyNewBooking(booking: Booking): Promise<boolean> {
   return send(() => ({
     text: newBookingText(booking),

@@ -1,5 +1,4 @@
-// The date rules of the website's booking form, repeated here so a request that
-// skips the form cannot book what the form would refuse. Keep the two in step.
+// The website form's date rules, repeated for requests that skip the form. Keep the two in step.
 
 import { zonedStamp } from "./datetime";
 import type { BookingPlan } from "./types";
@@ -66,7 +65,7 @@ function daysToFirstBookableDay(
   return days;
 }
 
-/** The first day that can be booked at `stamp`, a Tirana "YYYY-MM-DDTHH:mm"; `sameDay` false skips today whatever the hour. */
+/** The first bookable day at `stamp`, a Tirana "YYYY-MM-DDTHH:mm". `sameDay` false skips today. */
 export function earliestBookableDay(stamp: string, sameDay = true): string {
   const today = Date.parse(`${stamp.slice(0, 10)}T00:00:00Z`);
   const days = daysToFirstBookableDay(

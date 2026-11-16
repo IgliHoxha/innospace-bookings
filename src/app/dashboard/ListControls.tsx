@@ -1,8 +1,7 @@
 import type { BookingCounts } from "@/lib/db";
 import type { BookingFilter } from "@/lib/types";
 
-// One entry drives a stat box and a chip. Only "all" is worded differently on
-// the box, where it reads as a count.
+// One entry drives a stat box and a chip; only "all" reads differently on the box, as a count.
 const FILTERS: { key: BookingFilter; label: string; stat?: string }[] = [
   { key: "all", label: "All", stat: "Total" },
   { key: "new", label: "New" },

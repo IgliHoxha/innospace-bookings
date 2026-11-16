@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import nextConfig from "../../next.config.mjs";
 
-// The Docker image is nothing but Next's standalone output, so what the config
-// traces into it (and keeps out of it) decides whether the server can start.
+// The image is only Next's standalone output, so what the config traces into it decides whether the server starts.
 const excluded = nextConfig.outputFileTracingExcludes?.["*"] ?? [];
 
 describe("the standalone server bundle", () => {
