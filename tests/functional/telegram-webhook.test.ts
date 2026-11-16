@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterResponse } from "../helpers/after";
 import { makeRequest, resetApp, sessionToken } from "../helpers/app";
 import { WEBHOOK_SECRET } from "../helpers/fixtures";
 import {
@@ -58,6 +59,7 @@ async function booked(): Promise<{ id: string; alert: string }> {
     }),
   );
   const { id } = (await res.json()) as { id: string };
+  await afterResponse(); // the alert goes out behind the response
   const alert = sentMessage(fetchMock, fetchMock.mock.calls.length - 1).text;
   fetchMock.mockClear();
   return { id, alert };
@@ -267,6 +269,7 @@ describe("POST /api/telegram/webhook (everything else)", () => {
       }),
     );
     const { id } = (await res.json()) as { id: string };
+    await afterResponse();
     const alert = sentMessage(fetchMock, 0).text;
     fetchMock.mockClear();
 

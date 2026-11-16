@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { createBooking, queryBookings, deleteBookings } from "@/lib/db";
 import {
   BOOKING_FILTERS,
@@ -78,8 +78,8 @@ export async function POST(req: NextRequest) {
 
     const booking = await createBooking(input);
 
-    // Never throws and gives up after a few seconds, so it cannot cost the 201.
-    await notifyNewBooking(booking);
+    // Sent once the response has gone, so the guest never waits on Telegram.
+    after(() => notifyNewBooking(booking));
 
     return NextResponse.json(
       { ok: true, id: booking.id },

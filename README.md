@@ -127,8 +127,8 @@ The dashboard sits behind a branded sign-in (rate-limited per IP):
 ## API
 
 - `POST /api/bookings`: public; the website posts a booking here (origin-gated to
-  `ALLOWED_ORIGINS`, honeypot + Turnstile). `201` on success, after the
-  Telegram alert when one is configured.
+  `ALLOWED_ORIGINS`, honeypot + Turnstile). `201` on success; the Telegram
+  alert, when one is configured, goes out after the response.
 - `GET /api/bookings`: protected; a filtered, searchable, paginated page.
 - `DELETE /api/bookings`: protected; permanently removes soft-deleted rows.
 - `PATCH /api/bookings/:id`: protected; `{ status, emailBody? }`. On
@@ -196,9 +196,10 @@ no library.
    the group's id instead.
 4. `fly secrets set TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...`
 
-The alert never costs a booking: if Telegram refuses the message or does not
-answer within three seconds, the reason is logged and the guest still gets
-their `201`. Honeypot submissions and refused requests send nothing.
+The alert never costs a booking or slows one down: it is sent after the guest
+has their `201`, and if Telegram refuses the message or does not answer within
+three seconds, the reason is logged. Honeypot submissions and refused requests
+send nothing.
 
 ### Answering an alert
 

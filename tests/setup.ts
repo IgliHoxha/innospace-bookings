@@ -1,6 +1,7 @@
 // Deterministic baseline env for every test file, then per-test temp-DB cleanup.
 // Tests override individual vars with vi.stubEnv and restore them themselves.
 import { afterEach, vi } from "vitest";
+import { dropAfter, queueAfter } from "./helpers/after";
 import { cleanupTmp } from "./helpers/app";
 import { ADMIN_PASS, ADMIN_USER, SIGNING } from "./helpers/fixtures";
 
@@ -62,9 +63,17 @@ for (const key of [
   delete process.env[key];
 }
 
+// after() throws outside a real request, so handlers queue their work instead
+// and a test runs it with afterResponse().
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: queueAfter,
+}));
+
 // Mocks persist across vi.resetModules(), so clear call history each test (the
 // mockResolvedValue implementations set in vi.mock factories survive a clear).
 afterEach(() => {
   vi.clearAllMocks();
+  dropAfter();
   cleanupTmp();
 });

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterResponse } from "../helpers/after";
 import { makeRequest, resetApp } from "../helpers/app";
 import { BOT_CHAT, WEBHOOK_SECRET } from "../helpers/fixtures";
 import { SEND_URL, sentMessage, stubTelegram } from "../helpers/telegram";
@@ -24,8 +25,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const post = (body: unknown, headers?: Record<string, string>) =>
+const answer = (body: unknown, headers?: Record<string, string>) =>
   route.POST(makeRequest("/api/bookings", { method: "POST", body, headers }));
+
+// The alert goes out behind the response, so most tests let that work finish.
+const post = async (body: unknown, headers?: Record<string, string>) => {
+  const res = await answer(body, headers);
+  await afterResponse();
+  return res;
+};
 
 const good = { fullName: "Ada", email: "ada@example.com", plan: "daily-pass" };
 const total = async () => (await db.queryBookings()).total;
@@ -62,6 +70,25 @@ describe("POST /api/bookings (Telegram alert)", () => {
       `https://booking.innospacetirana.com/dashboard#${id}`,
     ]);
     expect(message.reply_markup).toBeUndefined();
+  });
+
+  it("answers the guest before the alert is sent", async () => {
+    const fetchMock = stubTelegram();
+    const res = await answer(good);
+    expect(res.status).toBe(201);
+    expect(await total()).toBe(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await afterResponse();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not keep the guest waiting on a Telegram that never answers", async () => {
+    stubTelegram();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => {})));
+    const res = await answer(good);
+    expect(res.status).toBe(201);
+    expect((await res.json()).ok).toBe(true);
   });
 
   it("invites a reply once the webhook secret is set", async () => {

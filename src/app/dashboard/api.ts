@@ -1,9 +1,9 @@
 // The dashboard's calls to this app's own API, kept together so no component
 // builds a URL or a request body by hand.
 import type { BookingPage } from "@/lib/db";
+import type { ListView } from "@/lib/list-view";
 import { PAGE_SIZE } from "@/lib/pagination";
-import type { SortState } from "@/lib/sort";
-import type { BookingFilter, BookingStatus } from "@/lib/types";
+import type { BookingStatus } from "@/lib/types";
 
 function sendJson(
   url: string,
@@ -15,14 +15,6 @@ function sendJson(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-}
-
-/** Which slice of the list is on screen. */
-interface ListView {
-  filter: BookingFilter;
-  search: string;
-  sort: SortState;
-  page: number;
 }
 
 /** One page of the list, or null when the server turns the request down. */

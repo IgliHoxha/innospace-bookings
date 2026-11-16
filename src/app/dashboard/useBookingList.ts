@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BookingPage } from "@/lib/db";
-import { INITIAL_FILTER, pageCount } from "@/lib/pagination";
 import {
-  INITIAL_SORT,
-  nextSort,
-  type BookingSort,
-  type SortState,
-} from "@/lib/sort";
+  INITIAL_VIEW,
+  withFilter,
+  withPage,
+  withSearch,
+  withSort,
+  type ListView,
+} from "@/lib/list-view";
+import { pageCount } from "@/lib/pagination";
+import type { BookingSort } from "@/lib/sort";
 import type { BookingFilter } from "@/lib/types";
 import { fetchBookings } from "./api";
 
@@ -16,12 +19,24 @@ import { fetchBookings } from "./api";
  */
 export function useBookingList(initialData: BookingPage) {
   const [data, setData] = useState<BookingPage>(initialData);
-  const [filter, setFilter] = useState<BookingFilter>(INITIAL_FILTER);
+  // One state for the whole view: a change that also resets the page is then a
+  // single update, so the list is fetched once for it.
+  const [view, setView] = useState<ListView>(INITIAL_VIEW);
   const [query, setQuery] = useState("");
-  const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<SortState>(INITIAL_SORT);
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+
+  const setFilter = useCallback(
+    (filter: BookingFilter) => setView((v) => withFilter(v, filter)),
+    [],
+  );
+  const sortBy = useCallback(
+    (key: BookingSort) => setView((v) => withSort(v, key)),
+    [],
+  );
+  const setPage = useCallback(
+    (page: number) => setView((v) => withPage(v, page)),
+    [],
+  );
 
   // Request id guards against a slow response overwriting a newer one.
   const reqId = useRef(0);
@@ -29,11 +44,11 @@ export function useBookingList(initialData: BookingPage) {
     const id = ++reqId.current;
     setLoading(true);
     try {
-      const next = await fetchBookings({ filter, search, sort, page });
+      const next = await fetchBookings(view);
       if (id !== reqId.current) return; // superseded by a newer request
       if (!next) return;
       const last = pageCount(next.total);
-      if (page > last) {
+      if (view.page > last) {
         setPage(last); // page fell out of range (e.g. last row on last page gone)
         return;
       }
@@ -41,18 +56,13 @@ export function useBookingList(initialData: BookingPage) {
     } finally {
       if (id === reqId.current) setLoading(false);
     }
-  }, [filter, search, sort, page]);
+  }, [view, setPage]);
 
   // Debounce the search box so we don't hit the API on every keystroke.
   useEffect(() => {
-    const t = setTimeout(() => setSearch(query), 300);
+    const t = setTimeout(() => setView((v) => withSearch(v, query)), 300);
     return () => clearTimeout(t);
   }, [query]);
-
-  // Any filter/search/sort change returns to the first page.
-  useEffect(() => {
-    setPage(1);
-  }, [filter, search, sort]);
 
   // Skip the first render - the server already supplied page 1.
   const didMount = useRef(false);
@@ -64,23 +74,18 @@ export function useBookingList(initialData: BookingPage) {
     reload();
   }, [reload]);
 
-  const sortBy = useCallback(
-    (key: BookingSort) => setSort((s) => nextSort(s, key)),
-    [],
-  );
-
   return {
     data,
     loading,
-    filter,
+    filter: view.filter,
     setFilter,
     /** The search box as typed; `search` is the debounced value the list uses. */
     query,
     setQuery,
-    search,
-    sort,
+    search: view.search,
+    sort: view.sort,
     sortBy,
-    page,
+    page: view.page,
     setPage,
     reload,
   };

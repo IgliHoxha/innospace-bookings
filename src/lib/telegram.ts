@@ -10,7 +10,8 @@ import type { Booking } from "./types";
 
 const API_URL = "https://api.telegram.org";
 
-// The guest is waiting on the POST, so a slow Telegram is given up on.
+// The alert runs after the guest has their answer, and a slow Telegram is
+// still given up on, so stalled requests cannot pile up behind it.
 const TIMEOUT_MS = 3000;
 
 // Telegram refuses a message over 4096 characters and the form bounds nothing,
