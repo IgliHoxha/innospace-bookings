@@ -55,6 +55,11 @@ describe("appBaseUrl", () => {
     vi.stubEnv("APP_BASE_URL", "http://localhost:4000");
     expect(appBaseUrl()).toBe("http://localhost:4000");
   });
+
+  it("drops a trailing slash, so a path can be appended as is", () => {
+    vi.stubEnv("APP_BASE_URL", "http://localhost:4000/");
+    expect(appBaseUrl()).toBe("http://localhost:4000");
+  });
 });
 
 describe("getPricingFromEnv", () => {

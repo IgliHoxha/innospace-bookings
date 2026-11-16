@@ -46,7 +46,7 @@ const RED = "#b91c1c";
 const LOGO_VERSION = "6";
 
 function emailLogoUrl(): string {
-  return `${appBaseUrl().replace(/\/$/, "")}/logo-mark.svg?v=${LOGO_VERSION}`;
+  return `${appBaseUrl()}/logo-mark.svg?v=${LOGO_VERSION}`;
 }
 
 // logo-mark.svg is 329x308, so a 32px-tall render is 34px wide. Mail clients that
@@ -81,15 +81,6 @@ function client(): Resend | null {
   }
   _resend = new Resend(apiKey);
   return _resend;
-}
-
-function from(): string {
-  return requireEnv("EMAIL_FROM");
-}
-
-// Where a reply lands instead of the sender; unset keeps the sender replyable.
-function replyTo(): string | undefined {
-  return optionalEnv("EMAIL_REPLY_TO");
 }
 
 function escapeHtml(s: string): string {
@@ -189,6 +180,27 @@ function shell(opts: {
   </div>`;
 }
 
+/** Hands one email to Resend. `what` names it in the log. True only when accepted. */
+async function deliver(
+  resend: Resend,
+  what: string,
+  mail: { to: string; subject: string; html: string },
+): Promise<boolean> {
+  const { error } = await resend.emails.send({
+    from: requireEnv("EMAIL_FROM"),
+    to: [mail.to],
+    // Where a reply lands instead of the sender; unset keeps the sender replyable.
+    replyTo: optionalEnv("EMAIL_REPLY_TO"),
+    subject: mail.subject,
+    html: mail.html,
+  });
+  if (error) {
+    console.error(`[email] ${what} was rejected:`, error.message);
+    return false;
+  }
+  return true;
+}
+
 /**
  * Customer confirm/cancel email; customBody (dashboard edit) overrides the
  * template. Resolves true only when Resend accepted it.
@@ -210,10 +222,8 @@ export async function sendCustomerStatusEmail(
     customBody ?? emailBodyText(booking, status, getPricingFromEnv(), contact)
   ).trim();
 
-  const { error } = await resend.emails.send({
-    from: from(),
-    to: [booking.email],
-    replyTo: replyTo(),
+  return deliver(resend, "status email", {
+    to: booking.email,
     subject: emailSubject(status, booking),
     html: shell({
       accent: status === "confirmed" ? BRAND : RED,
@@ -226,11 +236,6 @@ export async function sendCustomerStatusEmail(
       preheader: emailPreheader(booking, status, contact),
     }),
   });
-  if (error) {
-    console.error("[email] status email was rejected:", error.message);
-    return false;
-  }
-  return true;
 }
 
 /**
@@ -248,10 +253,8 @@ export async function sendReviewRequestEmail(
   const resend = client();
   if (!resend) return false;
 
-  const { error } = await resend.emails.send({
-    from: from(),
-    to: [to],
-    replyTo: replyTo(),
+  return deliver(resend, "review request", {
+    to,
     subject: reviewEmailSubject(contact),
     html: shell({
       accent: BRAND,
@@ -261,9 +264,4 @@ export async function sendReviewRequestEmail(
       preheader: reviewEmailPreheader(contact),
     }),
   });
-  if (error) {
-    console.error("[email] review request was rejected:", error.message);
-    return false;
-  }
-  return true;
 }

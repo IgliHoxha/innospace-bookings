@@ -35,9 +35,12 @@ export function optionalEnv(name: string): string | undefined {
 const DEFAULT_APP_BASE_URL = "https://booking.innospacetirana.com";
 const DEFAULT_WEBSITE_URL = "https://innospacetirana.com";
 
-/** Base URL this app is served from, used for absolute links in emails. */
+/** Base URL this app is served from, without a trailing slash, for absolute links. */
 export function appBaseUrl(): string {
-  return optionalEnv("APP_BASE_URL") ?? DEFAULT_APP_BASE_URL;
+  return (optionalEnv("APP_BASE_URL") ?? DEFAULT_APP_BASE_URL).replace(
+    /\/$/,
+    "",
+  );
 }
 
 /** Server-only: PRICE_* are never exposed to the browser. */

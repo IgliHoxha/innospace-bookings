@@ -207,10 +207,12 @@ function fromRow(r: Row): Booking {
 
 // A booking as the app reads it: the row plus its guest's address and review
 // stamps. `from`/`to` are SQL reserved words - keep them quoted.
+const BOOKINGS_WITH_GUEST =
+  "FROM bookings b LEFT JOIN guests g ON g.id = b.guestId";
 const BOOKING_ROWS = `SELECT b.id, b.createdAt, b.status, b.source, b.fullName,
     g.email, b.phoneNumber, b.plan, b."from", b."to", b.note,
     g.reviewAskedAt, g.reviewEmailedAt
-  FROM bookings b LEFT JOIN guests g ON g.id = b.guestId`;
+  ${BOOKINGS_WITH_GUEST}`;
 
 function findBooking(id: string): Booking | null {
   const row = prep(`${BOOKING_ROWS} WHERE b.id = ?`).get(id) as Row | undefined;
@@ -340,9 +342,9 @@ export async function queryBookings(
   // Without a search the tab's tally is the answer, so only a search counts.
   const total = search
     ? (
-        prep(
-          `SELECT COUNT(*) AS n FROM bookings b LEFT JOIN guests g ON g.id = b.guestId ${whereSql}`,
-        ).get(...params) as { n: number }
+        prep(`SELECT COUNT(*) AS n ${BOOKINGS_WITH_GUEST} ${whereSql}`).get(
+          ...params,
+        ) as { n: number }
       ).n
     : filter === "all"
       ? counts.total

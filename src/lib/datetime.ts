@@ -18,9 +18,16 @@ const MONTHS = [
   "December",
 ];
 
-function parseYMD(value: string | undefined) {
+type YMD = { y: number; m: number; d: number };
+
+function parseYMD(value: string | undefined): YMD | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
   return m ? { y: +m[1], m: +m[2], d: +m[3] } : null;
+}
+
+/** The last booked day: the end date, or the start of a single-day booking. */
+function lastDay(from: string | undefined, to: string | undefined): YMD | null {
+  return parseYMD(to) ?? parseYMD(from);
 }
 
 /** The "HH:mm" a booked value carries (the event room's), or "" for a bare date. */
@@ -71,8 +78,7 @@ export function formatDateRangeLong(
   const t = parseYMD(to);
   const ft = timeOf(from);
   const tt = timeOf(to);
-  const day = (p: { y: number; m: number; d: number }) =>
-    `${p.d} ${MONTHS[p.m - 1]} ${p.y}`;
+  const day = (p: YMD) => `${p.d} ${MONTHS[p.m - 1]} ${p.y}`;
   if (!t || (t.y === f.y && t.m === f.m && t.d === f.d)) {
     if (!ft) return day(f);
     return tt && tt !== ft ? `${day(f)}, ${ft}-${tt}` : `${day(f)}, ${ft}`;
@@ -100,7 +106,7 @@ export function hasEnded(
   to: string | undefined,
   today: string,
 ): boolean {
-  const end = parseYMD(to) ?? parseYMD(from);
+  const end = lastDay(from, to);
   if (!end) return false;
   return `${end.y}-${pad2(end.m)}-${pad2(end.d)}` < today;
 }
@@ -114,11 +120,10 @@ export function daysSinceEnd(
   to: string | undefined,
   today: string,
 ): number | null {
-  const end = parseYMD(to) ?? parseYMD(from);
+  const end = lastDay(from, to);
   const now = parseYMD(today);
   if (!end || !now) return null;
-  const utc = (p: { y: number; m: number; d: number }) =>
-    Date.UTC(p.y, p.m - 1, p.d);
+  const utc = (p: YMD) => Date.UTC(p.y, p.m - 1, p.d);
   return Math.round((utc(now) - utc(end)) / 86_400_000);
 }
 

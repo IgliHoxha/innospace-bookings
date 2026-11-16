@@ -58,7 +58,7 @@ export function newBookingText(booking: Booking): string {
     ...(repliesEnabled() ? [REPLY_HINT, ""] : []),
     // Always the last line, where nothing a guest typed can follow it: a reply
     // is matched to its booking by the id this link ends on (see bookingIdIn).
-    `${appBaseUrl().replace(/\/$/, "")}/dashboard#${booking.id}`,
+    `${appBaseUrl()}/dashboard#${booking.id}`,
   ].join("\n");
 }
 

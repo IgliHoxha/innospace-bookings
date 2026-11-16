@@ -53,32 +53,69 @@ type RateStatus = {
   remainingAttempts: number;
 };
 
-/** Is this client currently locked out or banned? Read-only (no counters change). */
-export function checkBlocked(key: string): RateStatus {
-  const now = Date.now();
-  const a = attempts.get(key);
-  if (a && a.banned) {
-    return {
-      blocked: true,
-      banned: true,
-      retryAfterSeconds: 0,
-      remainingAttempts: 0,
-    };
-  }
-  if (a && a.blockedUntil > now) {
-    return {
-      blocked: true,
-      banned: false,
-      retryAfterSeconds: Math.ceil((a.blockedUntil - now) / 1000),
-      remainingAttempts: 0,
-    };
-  }
+function banned(): RateStatus {
+  return {
+    blocked: true,
+    banned: true,
+    retryAfterSeconds: 0,
+    remainingAttempts: 0,
+  };
+}
+
+function locked(retryAfterSeconds: number): RateStatus {
+  return {
+    blocked: true,
+    banned: false,
+    retryAfterSeconds,
+    remainingAttempts: 0,
+  };
+}
+
+function open(remainingAttempts: number): RateStatus {
   return {
     blocked: false,
     banned: false,
     retryAfterSeconds: 0,
-    remainingAttempts: a ? Math.max(0, maxAttempts() - a.fails) : maxAttempts(),
+    remainingAttempts,
   };
+}
+
+/** The ban or lockout a client is under at `now`, or null when it may try. */
+function standingBlock(a: Attempt | undefined, now: number): RateStatus | null {
+  if (a?.banned) return banned();
+  if (a && a.blockedUntil > now) {
+    return locked(Math.ceil((a.blockedUntil - now) / 1000));
+  }
+  return null;
+}
+
+/** Is this client currently locked out or banned? Read-only (no counters change). */
+export function checkBlocked(key: string): RateStatus {
+  const a = attempts.get(key);
+  return (
+    standingBlock(a, Date.now()) ??
+    open(a ? Math.max(0, maxAttempts() - a.fails) : maxAttempts())
+  );
+}
+
+/** Count one more failure against `a`, locking out or banning at the thresholds. */
+function escalate(a: Attempt, now: number): RateStatus {
+  a.fails += 1;
+  if (a.fails < maxAttempts()) return open(maxAttempts() - a.fails);
+
+  a.lockouts += 1;
+  a.fails = 0; // reset the window; the lockout is the penalty now
+
+  // Too many lockouts: ban this IP outright (until process restart / reset).
+  if (a.lockouts > maxLockouts()) {
+    a.banned = true;
+    a.blockedUntil = Number.MAX_SAFE_INTEGER;
+    return banned();
+  }
+
+  const seconds = blockBaseSeconds() * a.lockouts; // 60s, 120s, 180s, …
+  a.blockedUntil = now + seconds * 1000;
+  return locked(seconds);
 }
 
 /**
@@ -98,64 +135,10 @@ export function registerFailure(key: string): RateStatus {
   };
   a.seen = now;
 
-  // Already banned: nothing more to escalate.
-  if (a.banned) {
-    attempts.set(key, a);
-    return {
-      blocked: true,
-      banned: true,
-      retryAfterSeconds: 0,
-      remainingAttempts: 0,
-    };
-  }
-
-  // Already serving a lockout: extend nothing, just report the remaining time.
-  if (a.blockedUntil > now) {
-    attempts.set(key, a);
-    return {
-      blocked: true,
-      banned: false,
-      retryAfterSeconds: Math.ceil((a.blockedUntil - now) / 1000),
-      remainingAttempts: 0,
-    };
-  }
-
-  a.fails += 1;
-  if (a.fails >= maxAttempts()) {
-    a.lockouts += 1;
-    a.fails = 0; // reset the window; the lockout is the penalty now
-
-    // Too many lockouts: ban this IP outright (until process restart / reset).
-    if (a.lockouts > maxLockouts()) {
-      a.banned = true;
-      a.blockedUntil = Number.MAX_SAFE_INTEGER;
-      attempts.set(key, a);
-      return {
-        blocked: true,
-        banned: true,
-        retryAfterSeconds: 0,
-        remainingAttempts: 0,
-      };
-    }
-
-    const seconds = blockBaseSeconds() * a.lockouts; // 60s, 120s, 180s, …
-    a.blockedUntil = now + seconds * 1000;
-    attempts.set(key, a);
-    return {
-      blocked: true,
-      banned: false,
-      retryAfterSeconds: seconds,
-      remainingAttempts: 0,
-    };
-  }
-
+  // Already banned or serving a lockout: escalate and extend nothing.
+  const status = standingBlock(a, now) ?? escalate(a, now);
   attempts.set(key, a);
-  return {
-    blocked: false,
-    banned: false,
-    retryAfterSeconds: 0,
-    remainingAttempts: maxAttempts() - a.fails,
-  };
+  return status;
 }
 
 /** Successful login: clear the client's failure/lockout history. */
