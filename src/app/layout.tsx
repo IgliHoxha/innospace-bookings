@@ -1,16 +1,6 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans } from "next/font/google";
+import "./fonts.css";
 import "./globals.css";
-
-// Same typeface as innospacetirana.com
-const ibmPlexSans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "600", "700"], // only the weights the UI actually uses
-  variable: "--font-ibm-plex-sans",
-  display: "swap",
-  // No <link rel="preload">: it logs a "preloaded but not used" warning and the swap-in is imperceptible here.
-  preload: false,
-});
 
 export const metadata: Metadata = {
   title: "Innospace Bookings",
@@ -25,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={ibmPlexSans.variable}>
+    <html lang="en">
       <body>{children}</body>
     </html>
   );
