@@ -1,4 +1,4 @@
-// Single source of truth for statuses: the type, the API validators and the DB CHECK all derive from this array.
+// Single source of truth for statuses. The DB's CHECK repeats them (migration 6), so a new status needs a migration.
 export const BOOKING_STATUSES = [
   "new",
   "confirmed",
@@ -13,7 +13,7 @@ export const BOOKING_FILTERS = ["all", ...BOOKING_STATUSES] as const;
 
 export type BookingFilter = (typeof BOOKING_FILTERS)[number];
 
-// Single source of truth for booking plans (the slugs the website sends).
+// Single source of truth for booking plans (the slugs the website sends). The route checks them; the DB does not.
 export const BOOKING_PLANS = [
   "daily-pass",
   "weekly-pass",

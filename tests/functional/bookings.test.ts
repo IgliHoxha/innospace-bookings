@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeRequest, resetApp, sessionToken } from "../helpers/app";
+import { version5File } from "../helpers/legacy-db";
 import { INITIAL_FILTER, PAGE_SIZE } from "@/lib/pagination";
 import { INITIAL_SORT } from "@/lib/sort";
 
@@ -54,6 +55,15 @@ describe("POST /api/bookings (public)", () => {
     const res = await post({ ...good, plan: "platinum-pass" });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain("Unknown plan");
+  });
+
+  it("201s an interview-room booking on a database older than that plan", async () => {
+    version5File([{ id: "old", plan: "weekly-pass", fullName: "Earlier" }]);
+    const res = await post({ ...good, plan: "interview-room" });
+    expect(res.status).toBe(201);
+    const { id } = (await res.json()) as { id: string };
+    expect((await db.getBooking(id))?.plan).toBe("interview-room");
+    expect((await db.getBooking("old"))?.fullName).toBe("Earlier");
   });
 
   it("201s a valid submission and stores it", async () => {

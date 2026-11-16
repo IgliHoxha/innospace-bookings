@@ -23,6 +23,7 @@ function dbFile(): string {
 }
 
 const inList = (xs: readonly string[]) => xs.map((x) => `'${x}'`).join(", ");
+// Version 1's table. Its CHECKs froze the lists as of the file's creation, which version 6 puts right.
 const TABLE_BODY = `(
   id TEXT PRIMARY KEY,
   createdAt TEXT NOT NULL,
@@ -119,6 +120,37 @@ const MIGRATIONS: Migration[] = [
       db.exec(
         `CREATE INDEX IF NOT EXISTS idx_bookings_status_createdAt ON bookings(status, createdAt);`,
       );
+    },
+  },
+  {
+    // Rebuilds bookings without the plan CHECK: a file kept the plans of the day it was created and refused newer ones.
+    version: 6,
+    up: (db) => {
+      // Literal SQL on purpose: a migration must give every file the same table, whatever the arrays hold by then.
+      db.exec(`
+        CREATE TABLE bookings_rebuilt (
+          id TEXT PRIMARY KEY,
+          createdAt TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('new', 'confirmed', 'cancelled', 'deleted')),
+          source TEXT,
+          fullName TEXT, phoneNumber TEXT,
+          plan TEXT,
+          "from" TEXT, "to" TEXT,
+          note TEXT,
+          guestId INTEGER REFERENCES guests(id)
+        );
+        INSERT INTO bookings_rebuilt
+            (id, createdAt, status, source, fullName, phoneNumber, plan, "from", "to", note, guestId)
+          SELECT id, createdAt, status, source, fullName, phoneNumber, plan, "from", "to", note, guestId
+          FROM bookings;
+        DROP TABLE bookings;
+        ALTER TABLE bookings_rebuilt RENAME TO bookings;
+
+        -- The indexes went with the old table.
+        CREATE INDEX idx_bookings_createdAt ON bookings(createdAt);
+        CREATE INDEX idx_bookings_guestId ON bookings(guestId);
+        CREATE INDEX idx_bookings_status_createdAt ON bookings(status, createdAt);
+      `);
     },
   },
 ];

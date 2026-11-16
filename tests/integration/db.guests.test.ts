@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { loadDb } from "../helpers/app";
-import type { BookingInput } from "@/lib/types";
+import { version5File } from "../helpers/legacy-db";
+import {
+  BOOKING_PLANS,
+  BOOKING_STATUSES,
+  type BookingInput,
+} from "@/lib/types";
 
 type Db = Awaited<ReturnType<typeof loadDb>>;
 let db: Db;
@@ -379,6 +384,207 @@ describe("schema migration 5", () => {
       .join(" | ");
     expect(plan).toContain("idx_bookings_status_createdAt (status=?)");
     expect(plan).not.toContain("TEMP B-TREE");
+  });
+});
+
+describe("schema migration 6", () => {
+  const T1 = "2026-07-02T09:00:00.000Z";
+  const tableSql = () =>
+    raw(
+      (f) =>
+        (
+          f
+            .prepare("SELECT sql FROM sqlite_master WHERE name = 'bookings'")
+            .get() as { sql: string }
+        ).sql,
+    );
+  /** Does the file itself take this row? Written past the module under test. */
+  const fileTakes = (columns: string, values: string): boolean => {
+    const file = new Database(process.env.DATA_FILE as string);
+    file.pragma("foreign_keys = ON");
+    try {
+      file.exec(`INSERT INTO bookings (${columns}) VALUES (${values})`);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      file.close();
+    }
+  };
+
+  it("refused a newer plan before the migration, which is the fault it fixes", () => {
+    version5File();
+    expect(
+      fileTakes(
+        "id, createdAt, status, plan",
+        "'x', 't', 'new', 'interview-room'",
+      ),
+    ).toBe(false);
+  });
+
+  it("lets a file created before a plan existed store that plan", async () => {
+    version5File([{ id: "old", plan: "weekly-pass" }]);
+    const made = await db.createBooking(input({ plan: "interview-room" }));
+    expect((await stored(made.id))?.plan).toBe("interview-room");
+    expect(tableSql()).not.toContain("plan IN");
+    raw((f) =>
+      expect(f.pragma("user_version", { simple: true })).toBe(
+        db.SCHEMA_VERSION,
+      ),
+    );
+  });
+
+  it("keeps every booking, guest and review stamp exactly as it was", async () => {
+    version5File([
+      {
+        id: "full",
+        createdAt: "2026-06-30T10:00:00.000Z",
+        status: "cancelled",
+        fullName: "Ada Lovelace",
+        email: "Ada@Example.com",
+        phoneNumber: "+355 69 123 4567",
+        plan: "event-room",
+        from: "2026-07-10T11:00",
+        to: "2026-07-10T14:00",
+        note: "Two lines\nand a 'quote'",
+        reviewAskedAt: T1,
+        reviewEmailedAt: T1,
+      },
+      { id: "bare", status: "deleted", source: null },
+      { id: "confirmed", status: "confirmed", email: "bob@example.com" },
+    ]);
+    const before = raw((f) => [
+      f.prepare("SELECT * FROM bookings ORDER BY id").all(),
+      f.prepare("SELECT * FROM guests ORDER BY id").all(),
+    ]);
+
+    expect((await db.listBookings()).map((b) => b.id)).toEqual([
+      "confirmed",
+      "bare",
+      "full",
+    ]);
+    expect(
+      raw((f) => [
+        f.prepare("SELECT * FROM bookings ORDER BY id").all(),
+        f.prepare("SELECT * FROM guests ORDER BY id").all(),
+      ]),
+    ).toEqual(before);
+    expect(await stored("full")).toEqual({
+      id: "full",
+      createdAt: "2026-06-30T10:00:00.000Z",
+      status: "cancelled",
+      source: "website",
+      fullName: "Ada Lovelace",
+      email: "Ada@Example.com",
+      phoneNumber: "+355 69 123 4567",
+      plan: "event-room",
+      from: "2026-07-10T11:00",
+      to: "2026-07-10T14:00",
+      note: "Two lines\nand a 'quote'",
+      reviewAskedAt: T1,
+      reviewEmailedAt: T1,
+    });
+  });
+
+  it("keeps the columns, the guest link and all three indexes", async () => {
+    version5File([{ id: "a", email: "ada@example.com" }]);
+    await db.listBookings(); // opens the connection, running the migration
+
+    raw((f) => {
+      expect(
+        (f.pragma("table_info(bookings)") as { name: string }[]).map(
+          (c) => c.name,
+        ),
+      ).toEqual([
+        "id",
+        "createdAt",
+        "status",
+        "source",
+        "fullName",
+        "phoneNumber",
+        "plan",
+        "from",
+        "to",
+        "note",
+        "guestId",
+      ]);
+      expect(
+        (
+          f.pragma("foreign_key_list(bookings)") as {
+            from: string;
+            table: string;
+            to: string;
+          }[]
+        ).map((k) => `${k.from} -> ${k.table}.${k.to}`),
+      ).toEqual(["guestId -> guests.id"]);
+      expect(f.pragma("foreign_key_check")).toEqual([]);
+      expect(f.pragma("integrity_check", { simple: true })).toBe("ok");
+      expect(
+        (f.pragma("index_list(bookings)") as { name: string }[])
+          .map((i) => i.name)
+          .filter((name) => !name.startsWith("sqlite_"))
+          .sort(),
+      ).toEqual([
+        "idx_bookings_createdAt",
+        "idx_bookings_guestId",
+        "idx_bookings_status_createdAt",
+      ]);
+      // Nothing of the rebuild is left behind.
+      expect(
+        f
+          .prepare(
+            "SELECT COUNT(*) AS n FROM sqlite_master WHERE name LIKE '%rebuilt%'",
+          )
+          .get(),
+      ).toEqual({ n: 0 });
+    });
+  });
+
+  it("still refuses an unknown status, a missing one and a dangling guest", async () => {
+    version5File();
+    await db.listBookings();
+    expect(fileTakes("id, createdAt, status", "'a', 't', 'archived'")).toBe(
+      false,
+    );
+    expect(fileTakes("id, createdAt, status", "'b', 't', NULL")).toBe(false);
+    expect(
+      fileTakes("id, createdAt, status, guestId", "'c', 't', 'new', 999"),
+    ).toBe(false);
+    expect(fileTakes("id, createdAt, status", "'d', 't', 'new'")).toBe(true);
+  });
+
+  it("is not run a second time when the file is opened again", async () => {
+    version5File([{ id: "a", email: "ada@example.com", reviewAskedAt: T1 }]);
+    await db.listBookings();
+    const sql = tableSql();
+    const again = await loadDbOnSameFile();
+    expect((await again.listBookings()).map((b) => b.reviewAskedAt)).toEqual([
+      T1,
+    ]);
+    expect(tableSql()).toBe(sql);
+  });
+
+  it("gives a brand-new file and an upgraded one the same table", async () => {
+    await db.listBookings();
+    const fresh = tableSql();
+
+    const upgraded = await loadDb();
+    version5File();
+    await upgraded.listBookings();
+    expect(tableSql()).toBe(fresh);
+  });
+
+  // The guard for next time: a list that grows without a migration fails here, on any file.
+  it.each(BOOKING_PLANS)("stores a %s booking", async (plan) => {
+    const made = await db.createBooking(input({ plan }));
+    expect((await stored(made.id))?.plan).toBe(plan);
+  });
+
+  it.each(BOOKING_STATUSES)("stores the %s status", async (status) => {
+    const made = await db.createBooking(input());
+    expect((await db.updateBookingStatus(made.id, status))?.status).toBe(
+      status,
+    );
   });
 });
 

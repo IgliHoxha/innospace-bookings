@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BOOKING_FILTERS, BOOKING_PLANS, BOOKING_STATUSES } from "@/lib/types";
 
-// These arrays feed the DB CHECK constraints and the API validators, so pin their membership.
+// These arrays feed the API validators, and the DB's status CHECK repeats one, so pin their membership.
 describe("booking enums", () => {
   it("lists the four statuses, with 'new' the initial one", () => {
     expect(BOOKING_STATUSES).toEqual([
