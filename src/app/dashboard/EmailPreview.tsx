@@ -23,7 +23,7 @@ export default function EmailPreview({
 
   // Deleted bookings have no associated email.
   if (booking.status === "deleted") {
-    return <span className="muted">-</span>;
+    return <span>-</span>;
   }
 
   // Once actioned, the email is locked - show only the one that was sent.

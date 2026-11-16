@@ -274,7 +274,7 @@ export interface BookingPage {
   counts: BookingCounts; // global tallies for the stat boxes
 }
 
-export interface BookingQuery {
+interface BookingQuery {
   filter?: BookingFilter;
   search?: string;
   sort?: BookingSort; // unset: newest request first
