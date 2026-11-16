@@ -20,7 +20,7 @@ const COLUMNS: { label: string; sort?: BookingSort }[] = [
 ];
 
 /** The rows ticked for permanent deletion, and how to tick them. */
-export interface RowSelection {
+interface RowSelection {
   ids: Set<string>;
   all: boolean;
   onToggle: (id: string) => void;

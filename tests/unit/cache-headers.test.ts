@@ -65,12 +65,7 @@ describe("cache headers", () => {
   });
 
   it("never marks an authenticated path public", async () => {
-    const assets = [
-      "/logo-mark.svg",
-      "/logo.svg",
-      "/favicon.ico",
-      "/favicon.png",
-    ];
+    const assets = ["/logo-mark.svg", "/logo.svg", "/favicon.png"];
     for (const rule of await rules()) {
       if (!rule.headers[0].value.includes("public")) continue;
       expect(assets).toContain(rule.source);
@@ -85,7 +80,7 @@ describe("cache headers", () => {
     expect(value).toContain("immutable");
   });
 
-  it.each(["/logo.svg", "/favicon.ico", "/favicon.png"])(
+  it.each(["/logo.svg", "/favicon.png"])(
     "caches %s for a day and revalidates after, since its URL never changes",
     async (path) => {
       const value = await onePolicy(path);

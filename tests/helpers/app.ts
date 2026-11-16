@@ -10,7 +10,7 @@ import { SESSION_COOKIE, createSessionToken } from "@/lib/auth";
 const tmpFiles: string[] = [];
 
 /** A unique temp path for a throwaway SQLite DB. */
-export function freshDataFile(): string {
+function freshDataFile(): string {
   const f = path.join(
     os.tmpdir(),
     `innospace-bookings-test-${randomUUID()}.db`,

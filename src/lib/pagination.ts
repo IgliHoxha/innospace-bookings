@@ -13,7 +13,7 @@ export function pageCount(total: number, pageSize: number = PAGE_SIZE): number {
   return Math.max(1, Math.ceil(total / pageSize));
 }
 
-export type PageItem = number | "…";
+type PageItem = number | "…";
 
 // Pages shown on each side of the current one.
 const NEIGHBOURS = 1;

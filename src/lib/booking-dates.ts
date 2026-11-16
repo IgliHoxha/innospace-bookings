@@ -15,7 +15,7 @@ export const SAME_DAY_CUTOFF_HOUR = 13;
 export const MIN_ROOM_HOURS = 3;
 
 /** The longest interview room booking: one flat price covers up to this. */
-export const SESSION_HOURS = 3;
+const SESSION_HOURS = 3;
 
 /** What the form allowed minutes ago still passes: clocks drift and the machine takes seconds to wake. */
 export const DATE_GRACE_MS = 10 * 60 * 1000;

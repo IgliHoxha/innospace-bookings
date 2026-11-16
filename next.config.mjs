@@ -48,7 +48,6 @@ const nextConfig = {
       },
       // Unversioned, so a day at the edge and a background refresh after it.
       { source: "/logo.svg", headers: unversionedAsset },
-      { source: "/favicon.ico", headers: unversionedAsset },
       { source: "/favicon.png", headers: unversionedAsset },
       // Never cacheable, stated explicitly so a broad "cache everything" rule at
       // Cloudflare can't ever serve one admin's dashboard to somebody else.

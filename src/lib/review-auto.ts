@@ -17,7 +17,7 @@ const FIRST_HOUR = 9;
 const LAST_HOUR = 20;
 const HOUR_MS = 60 * 60 * 1000;
 
-export type ReviewRun = {
+type ReviewRun = {
   /** "off": not switched on. "quiet": outside sending hours. "ran": guests were checked. */
   status: "off" | "quiet" | "ran";
   sent: number;

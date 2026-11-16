@@ -8,7 +8,7 @@ import { optionalEnv } from "./env-app";
 const SITEVERIFY_URL =
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
-export type TurnstileResult = {
+type TurnstileResult = {
   ok: boolean;
   skipped?: boolean;
   errors?: string[];

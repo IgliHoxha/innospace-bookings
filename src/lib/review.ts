@@ -5,7 +5,7 @@ import { daysSinceEnd, hasEnded } from "./datetime";
 import { firstName } from "./templates";
 import type { Booking, ContactInfo } from "./types";
 
-export type ReviewRequestLink = { channel: "whatsapp" | "email"; href: string };
+type ReviewRequestLink = { channel: "whatsapp" | "email"; href: string };
 
 /**
  * Digits-only international number for a wa.me link. Null unless the input

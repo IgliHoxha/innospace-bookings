@@ -18,7 +18,7 @@ function sendJson(
 }
 
 /** Which slice of the list is on screen. */
-export interface ListView {
+interface ListView {
   filter: BookingFilter;
   search: string;
   sort: SortState;

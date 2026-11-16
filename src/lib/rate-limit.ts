@@ -46,7 +46,7 @@ function prune(now: number) {
   }
 }
 
-export type RateStatus = {
+type RateStatus = {
   blocked: boolean;
   banned: boolean; // permanent block (won't clear on its own)
   retryAfterSeconds: number;

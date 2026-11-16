@@ -11,7 +11,7 @@ import { optionalEnv } from "./env-app";
 import { REPLY_HINT, bookingIdIn, sendTelegramMessage } from "./telegram";
 import type { BookingStatus } from "./types";
 
-export type ReplyStatus = Exclude<BookingStatus, "new">;
+type ReplyStatus = Exclude<BookingStatus, "new">;
 
 const REPLIES = new Map<string, ReplyStatus>([
   ["yes", "confirmed"],
@@ -21,7 +21,7 @@ const REPLIES = new Map<string, ReplyStatus>([
 
 export const NO_TARGET =
   "Reply to the booking's own message, so I know which one you mean.";
-export const GONE = "That booking no longer exists.";
+const GONE = "That booking no longer exists.";
 
 /** Is this the secret the webhook was registered with? False while none is set. */
 export function isTelegramWebhook(secret: string | null): boolean {

@@ -6,7 +6,7 @@ import { jsonError } from "./api-response";
 import { verifySessionToken, SESSION_COOKIE } from "./auth";
 
 /** Is this request carrying a valid dashboard session cookie? */
-export function hasSession(req: NextRequest): boolean {
+function hasSession(req: NextRequest): boolean {
   return verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
 }
 
