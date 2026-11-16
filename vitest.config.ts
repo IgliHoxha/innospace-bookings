@@ -13,4 +13,6 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
+  // tsconfig keeps JSX as written for Next, so a test that imports a component compiles it here.
+  oxc: { jsx: { runtime: "automatic" } },
 });

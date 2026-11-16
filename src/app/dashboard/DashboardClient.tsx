@@ -7,6 +7,7 @@ import type { Booking, ContactInfo, Pricing } from "@/lib/types";
 import { markReviewAsked, purgeBookings, updateStatus } from "./api";
 import BookingsTable from "./BookingsTable";
 import ConfirmDialog from "./ConfirmDialog";
+import CreatedBy from "./CreatedBy";
 import type { EmailDrafts } from "./EmailPreview";
 import ListControls from "./ListControls";
 import Pagination from "./Pagination";
@@ -204,6 +205,7 @@ export default function DashboardClient({
           <span className="site-footer-copy">
             © {new Date().getFullYear()} Innospace Tirana. All rights reserved.
           </span>
+          <CreatedBy />
         </div>
       </footer>
 

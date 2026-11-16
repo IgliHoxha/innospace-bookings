@@ -870,6 +870,10 @@ tr:last-child td {
   .stat .num {
     font-size: 26px;
   }
+  /* Stacked and centred, as the website's footer is on a phone. */
+  .site-footer-inner {
+    flex-direction: column;
+  }
 }
 
 /* Footer - a clean white bar with a hairline top border, matching the page. */
@@ -897,4 +901,43 @@ tr:last-child td {
 .site-footer-copy {
   font-size: 12px;
   color: var(--muted);
+}
+
+/* "Created by" credit: the website footer's pill, recoloured from its plum ground for this white bar. */
+.created-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px 6px 6px;
+  border-radius: 999px;
+  background: rgba(82, 69, 82, 0.05);
+  box-shadow: 0 0 0 1px rgba(82, 69, 82, 0.15);
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.created-by:hover {
+  background: rgba(82, 69, 82, 0.1);
+  box-shadow: 0 0 0 1px rgba(82, 69, 82, 0.3);
+}
+.created-by:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.created-by strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.created-by-mark {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  transition: transform 0.3s ease;
+}
+.created-by:hover .created-by-mark {
+  transform: rotate(-12deg);
 }
