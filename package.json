@@ -33,6 +33,7 @@
     "eslint": "^9.39.4",
     "eslint-config-next": "^15.5.19",
     "eslint-config-prettier": "^9.1.2",
+    "happy-dom": "^21.0.4",
     "prettier": "^3.9.3",
     "typescript": "5.7.3",
     "vitest": "^4.1.10",
