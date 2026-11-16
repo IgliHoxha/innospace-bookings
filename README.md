@@ -280,7 +280,7 @@ fly certs add booking.innospacetirana.com
 > `fly secrets set KEY=value` (triggers a rolling restart). Editing a secret is
 > the only way to change config: there is no plaintext `[env]` to edit.
 
-Then a Cloudflare `CNAME booking → <app>.fly.dev`. Pushing to `master` also
+Then a Cloudflare `CNAME booking → <app>.fly.dev`. Pushing to `main` also
 auto-deploys via GitHub Actions ([.github/workflows/fly-deploy.yml](.github/workflows/fly-deploy.yml)):
 
 - **Checks** (format, lint, both type checks, tests) and the **image build** run
