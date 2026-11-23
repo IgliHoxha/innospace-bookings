@@ -8,12 +8,14 @@ const RELEASE =
   'flyctl deploy --image "registry.fly.io/innospace-bookings:sha-${GITHUB_SHA}"';
 const decide = workflow.slice(
   workflow.indexOf("- name: Can this release change what is on the volume?"),
-  workflow.indexOf("- name: Snapshot the data volume"),
+  workflow.indexOf("- name: Back up the database"),
 );
-const snapshot = workflow.slice(
-  workflow.indexOf("- name: Snapshot the data volume"),
+const backup = workflow.slice(
+  workflow.indexOf("- name: Back up the database"),
   workflow.indexOf(RELEASE),
 );
+const script = readFileSync(".github/scripts/backup-db.sh", "utf8");
+const nightly = readFileSync(".github/workflows/backup.yml", "utf8");
 const touches = /TOUCHES: (.+)\n/.exec(decide)?.[1].split(" ") ?? [];
 // As git reads a pathspec without a star: the file itself, or anything under the folder.
 const covered = (file: string) =>
@@ -72,35 +74,102 @@ describe("the restore point before a release", () => {
     expect(decide).toMatch(
       /else\n[^\n]*\n\s+echo "needed=true" >> "\$GITHUB_OUTPUT"/,
     );
-    expect(snapshot).toContain("if: steps.touches.outputs.needed != 'false'");
+    expect(backup).toContain("if: steps.touches.outputs.needed != 'false'");
   });
 
   it("is the last thing before the release, and says so when none was needed", () => {
     const release = workflow.indexOf(RELEASE);
     expect(release).toBeGreaterThan(-1);
-    expect(workflow.indexOf("- name: Snapshot the data volume")).toBeLessThan(
+    expect(workflow.indexOf("- name: Back up the database")).toBeLessThan(
       release,
     );
     expect(decide).toContain("No restore point for this release");
-    expect(snapshot).toContain("Restore point for this release: snapshot");
+    expect(script).toContain("Restore point: ");
   });
 
-  it("finds the volume by the name the app mounts", () => {
-    expect(snapshot).toContain("VOLUME_NAME: bookings_data");
+  it("is the nightly backup's own script, named after the commit", () => {
+    expect(backup).toContain(
+      'bash .github/scripts/backup-db.sh "pre-release-${GITHUB_SHA::7}"',
+    );
+    for (const name of [
+      "FLY_API_TOKEN",
+      "CLOUDFLARE_ACCOUNT_ID",
+      "R2_BACKUP_TOKEN",
+    ])
+      expect(backup).toContain(`${name}: \${{ secrets.${name} }}`);
+  });
+
+  // Fly's whole-disk snapshots were replaced by the gzip in R2, so nothing here may ask for one.
+  it("takes no Fly snapshot, and stops the release when the backup fails", () => {
+    expect(workflow).not.toContain("volumes snapshots");
+    expect(script).toMatch(/^set -euo pipefail$/m);
+  });
+});
+
+describe("the database backup", () => {
+  it("copies the file the app writes, on the volume the app mounts", () => {
+    expect(script).toContain("/app/data/bookings.db");
     expect(readFileSync("fly.toml.example", "utf8")).toContain(
-      "source = 'bookings_data'",
+      "destination = '/app/data'",
     );
   });
 
-  // Fly refuses a second snapshot while the daily one runs, and that one is as good.
-  it("takes the one already on its way, and stops the release on any other refusal", () => {
-    expect(snapshot).toContain(
-      'if ! OUT=$(flyctl volumes snapshots create "$VOLUME" -a "$APP" 2>&1); then',
+  // Most of this database sits in its journal, which a plain file copy would leave behind.
+  it("takes one consistent copy while the app serves, never opening the file to write", () => {
+    expect(script).toContain("VACUUM INTO ?");
+    expect(script).toContain("readonly:true,fileMustExist:true");
+  });
+
+  // ssh does not wake a stopped machine, and this one sleeps most of the day.
+  it("starts the machine before reaching into it", () => {
+    expect(script.indexOf("flyctl machine start")).toBeGreaterThan(-1);
+    expect(script.indexOf("flyctl machine start")).toBeLessThan(
+      script.indexOf("flyctl ssh console"),
     );
-    expect(snapshot).toContain(
-      'grep -q "already scheduled" <<<"$OUT" || exit 1',
+  });
+
+  it("keeps a copy only once it opens and holds the bookings", () => {
+    const upload = script.indexOf("-X PUT");
+    expect(script).toContain('[ "$check" = ok ] ||');
+    expect(script.indexOf("PRAGMA integrity_check")).toBeLessThan(upload);
+    expect(script.indexOf("SELECT count(*) FROM bookings")).toBeLessThan(
+      upload,
     );
-    expect(snapshot).toMatch(/not releasing without it\." >&2\n\s+exit 1/);
+  });
+
+  it("stores it gzipped in the bucket, and fails when the upload is refused", () => {
+    expect(script).toContain("gzip -9 /tmp/bookings-backup.db");
+    expect(script).toContain("r2/buckets/$BUCKET/objects/$key");
+    expect(script).toContain("curl --fail-with-body");
+    expect(script).toContain(
+      'key="bookings-$(date -u +%Y-%m-%dT%H%MZ)-$LABEL.db.gz"',
+    );
+  });
+
+  it("leaves no copy behind in the machine", () => {
+    expect(
+      script.indexOf('-C "rm -f /tmp/bookings-backup.db.gz"'),
+    ).toBeGreaterThan(script.indexOf("flyctl ssh sftp get"));
+  });
+
+  // The repository is public and the file holds guests' names, emails and phones.
+  it("shows nothing of the file but a count, and uploads it nowhere on GitHub", () => {
+    const queries = [...script.matchAll(/sqlite3 "[^"]+" "([^"]+)"/g)].map(
+      (m) => m[1],
+    );
+    expect(queries).toEqual([
+      "PRAGMA integrity_check",
+      "SELECT count(*) FROM bookings",
+    ]);
+    expect(nightly + workflow).not.toContain("upload-artifact");
+  });
+
+  it("runs every night and on demand, one run at a time", () => {
+    expect(nightly).toMatch(/schedule:\n\s+- cron: "37 2 \* \* \*"/);
+    expect(nightly).toContain("workflow_dispatch:");
+    expect(nightly).toContain("concurrency: backup");
+    expect(nightly).toContain("bash .github/scripts/backup-db.sh nightly");
+    expect(nightly).toContain("timeout-minutes: 10");
   });
 });
 
