@@ -89,7 +89,8 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_BACKUP_TOKEN: ${{ secrets.R2_BACKUP_TOKEN }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         # The script stops the job on any failure, so nothing goes out without a copy that opens.
         run: bash .github/scripts/backup-db.sh "pre-release-${GITHUB_SHA::7}"
       - run: flyctl deploy --image "registry.fly.io/innospace-bookings:sha-${GITHUB_SHA}" --ha=false --config fly.toml.example
