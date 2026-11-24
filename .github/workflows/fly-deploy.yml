@@ -18,8 +18,59 @@ permissions:
   contents: read
 
 jobs:
+  # Decides which jobs below this push needs, so a change to the notes, the tests or the CI
+  # runs only what reads it and never releases an image identical to the live one.
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      checks: ${{ steps.since.outputs.checks }}
+      image: ${{ steps.since.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the diff below reaches back to the commit that is live
+      - uses: superfly/flyctl-actions/setup-flyctl@1.6
+      - name: What changed since the live commit?
+        id: since
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          APP: innospace-bookings
+          # Read by no check and held by no image: Prettier skips them and no test opens them.
+          UNCHECKED: README.md LICENSE Makefile .env.example docs
+          # Read by the checks, but kept out of the image by .dockerignore.
+          UNBUILT: tests .github .gitignore .prettierrc.json .prettierignore tsconfig.tests.json vitest.config.ts docker-compose.yml
+        run: |
+          set -euo pipefail
+          live=$(flyctl image show -a "$APP" --json | jq -r '.[0].Tag // empty' | sed 's/^sha-//') || live=
+          # True unless every change since the live commit sits under the given paths.
+          # A diff git cannot make counts as a change, and so does a path on neither list.
+          beyond() {
+            local path specs=(.)
+            for path in $1; do specs+=(":(exclude)$path"); done
+            ! git diff --quiet "$live" HEAD -- "${specs[@]}"
+          }
+          checks=true image=true
+          # From what is live, not the last push: a failed or superseded run hides no change.
+          # A manual run, an image no commit names or Fly not answering runs everything.
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$live" ]; then
+            beyond "$UNCHECKED" || checks=false
+            beyond "$UNCHECKED $UNBUILT" || image=false
+          fi
+          echo "checks=$checks" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          if [ "$checks" = false ]; then
+            echo "Nothing a check reads changed since $live: no checks, no build, no release." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$image" = false ]; then
+            echo "Nothing in the image changed since $live: the checks run, nothing is built or released." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   check:
     name: Format, lint, types and tests
+    needs: changes
+    # Anything but a plain "false" runs it, so a missing answer never skips the checks.
+    if: needs.changes.outputs.checks != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -27,8 +78,14 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      # The installed modules are kept whole, so only a lockfile change pays for an install.
+      - uses: actions/cache@v6
+        id: modules
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json') }}
+      - if: steps.modules.outputs.cache-hit != 'true'
+        run: npm ci
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
@@ -39,6 +96,9 @@ jobs:
   # checks costs no time: the image is built and pushed, but not released.
   build:
     name: Build image
+    needs: changes
+    # Skipped when the image would match the live one; the deploy and its release then skip too.
+    if: needs.changes.outputs.image != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -51,6 +111,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
   # Releases the image built above, and only once the checks have passed.
+  # A skipped check or build skips this job as well, so no image means no release.
   deploy:
     name: Deploy app
     needs: [check, build]

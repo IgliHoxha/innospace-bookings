@@ -18,8 +18,15 @@ const script = readFileSync(".github/scripts/backup-db.sh", "utf8");
 const nightly = readFileSync(".github/workflows/backup.yml", "utf8");
 const touches = /TOUCHES: (.+)\n/.exec(decide)?.[1].split(" ") ?? [];
 // As git reads a pathspec without a star: the file itself, or anything under the folder.
-const covered = (file: string) =>
-  touches.some((spec) => file === spec || file.startsWith(`${spec}/`));
+const under = (specs: string[], file: string) =>
+  specs.some((spec) => file === spec || file.startsWith(`${spec}/`));
+const covered = (file: string) => under(touches, file);
+// One job's text, from its key to the next job's.
+const section = (name: string, next: string) =>
+  workflow.slice(
+    workflow.indexOf(`\n  ${name}:\n`),
+    workflow.indexOf(`\n  ${next}:\n`),
+  );
 const sources = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
     entry.isDirectory()
@@ -37,7 +44,7 @@ describe("the restore point before a release", () => {
     ]);
     expect(decide).toContain('flyctl image show -a "$APP" --json');
     expect(decide).toContain('git diff --quiet "$live" HEAD -- $TOUCHES; then');
-    expect(workflow).toContain("fetch-depth: 0");
+    expect(section("deploy", "release")).toContain("fetch-depth: 0");
   });
 
   // A module opening the database from somewhere else would change data unseen.
@@ -104,6 +111,143 @@ describe("the restore point before a release", () => {
   it("takes no Fly snapshot, and stops the release when the backup fails", () => {
     expect(workflow).not.toContain("volumes snapshots");
     expect(script).toMatch(/^set -euo pipefail$/m);
+  });
+});
+
+describe("what a push runs", () => {
+  const gate = section("changes", "check");
+  const check = section("check", "build");
+  const build = section("build", "deploy");
+  const deploy = section("deploy", "release");
+  const list = (name: string) =>
+    new RegExp(`${name}: (.+)\\n`).exec(gate)?.[1].split(" ") ?? [];
+  const unchecked = list("UNCHECKED");
+  const unbuilt = [...unchecked, ...list("UNBUILT")];
+  // The step's rule: a job runs when a change sits outside the paths that job does not read.
+  const runs = (...changed: string[]) => ({
+    checks: changed.some((file) => !under(unchecked, file)),
+    image: changed.some((file) => !under(unbuilt, file)),
+  });
+  const lines = (file: string) =>
+    readFileSync(file, "utf8")
+      .split("\n")
+      .filter((line) => line && !line.startsWith("#"));
+
+  it("runs nothing for a change that no check reads and no image holds", () => {
+    expect(unchecked).toEqual([
+      "README.md",
+      "LICENSE",
+      "Makefile",
+      ".env.example",
+      "docs",
+    ]);
+    expect(runs("README.md", "LICENSE", "docs/img/login.png")).toEqual({
+      checks: false,
+      image: false,
+    });
+  });
+
+  it("runs the checks alone for a change to the tests, the CI or the tooling", () => {
+    for (const file of [
+      "tests/unit/deploy-workflow.test.ts",
+      ".github/workflows/fly-deploy.yml",
+      ".github/scripts/backup-db.sh",
+      "vitest.config.ts",
+      ".prettierignore",
+      "docker-compose.yml",
+    ])
+      expect(runs(file, "README.md"), file).toEqual({
+        checks: true,
+        image: false,
+      });
+  });
+
+  // A path on neither list builds, so a new file can never be left out of a release by default.
+  it("builds and releases for anything the image holds or is made from", () => {
+    for (const file of [
+      "src/app/page.tsx",
+      "public/logo.svg",
+      "package.json",
+      "package-lock.json",
+      "next.config.mjs",
+      "tsconfig.json",
+      "eslint.config.mjs",
+      "Dockerfile",
+      ".dockerignore",
+      "docker-entrypoint.sh",
+      "fly.toml.example",
+      "a-file-nobody-listed.txt",
+      ...touches,
+    ])
+      expect(runs(file, "README.md", "tests/setup.ts"), file).toEqual({
+        checks: true,
+        image: true,
+      });
+  });
+
+  // Otherwise a change to one would alter the image and still be passed over.
+  it("counts as outside the image only what .dockerignore keeps out of it", () => {
+    const ignored = lines(".dockerignore");
+    const kept = (path: string) =>
+      ignored.some((line) =>
+        line.startsWith("*") ? path.endsWith(line.slice(1)) : line === path,
+      );
+    expect(unbuilt.length).toBeGreaterThan(unchecked.length);
+    expect(unbuilt.filter((path) => !kept(path))).toEqual([]);
+  });
+
+  it("counts as unchecked only what Prettier never formats", () => {
+    const skipped = lines(".prettierignore");
+    const formatted = (file: string) =>
+      /\.(md|ya?ml|json|[cm]?[jt]sx?|css|html)$/.test(file) &&
+      !skipped.some((line) =>
+        line.startsWith("*")
+          ? file.endsWith(line.slice(1))
+          : under([line], file),
+      );
+    const files = unchecked.flatMap((path) =>
+      path === "docs" ? sources(path) : [path],
+    );
+    expect(files.length).toBeGreaterThan(unchecked.length);
+    expect(files.filter(formatted)).toEqual([]);
+  });
+
+  it("measures the change from the live commit, with git's own exclude", () => {
+    expect(gate).toContain("fetch-depth: 0");
+    expect(gate).toContain('flyctl image show -a "$APP" --json');
+    expect(gate).toContain('specs+=(":(exclude)$path")');
+    expect(gate).toContain('! git diff --quiet "$live" HEAD -- "${specs[@]}"');
+    expect(gate).toContain('beyond "$UNCHECKED" || checks=false');
+    expect(gate).toContain('beyond "$UNCHECKED $UNBUILT" || image=false');
+  });
+
+  it("runs everything on a manual run, an image no commit names or a missing answer", () => {
+    expect(gate).toMatch(/\) \|\| live=\n/);
+    expect(gate).toMatch(
+      /checks=true image=true\n(\s+#[^\n]*\n)*\s+if \[ "\$GITHUB_EVENT_NAME" = push \] && \[ -n "\$live" \]; then\n/,
+    );
+    expect(check).toContain("if: needs.changes.outputs.checks != 'false'");
+    expect(build).toContain("if: needs.changes.outputs.image != 'false'");
+  });
+
+  // A job waits for a skipped one only when told to, and nothing here tells it.
+  it("releases nothing when the checks or the build were skipped or failed", () => {
+    expect(check).toContain("needs: changes");
+    expect(build).toContain("needs: changes");
+    expect(deploy).toContain("needs: [check, build]");
+    expect(workflow).toContain("needs: deploy");
+    expect(workflow).not.toMatch(/always\(\)|cancelled\(\)|failure\(\)/);
+  });
+
+  it("installs the modules only when the lockfile changed", () => {
+    expect(check).toContain("path: node_modules");
+    expect(check).toContain(
+      "key: modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json') }}",
+    );
+    expect(check).toMatch(
+      /if: steps\.modules\.outputs\.cache-hit != 'true'\n\s+run: npm ci\n/,
+    );
+    expect(check).toContain("node-version: 22");
   });
 });
 

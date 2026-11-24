@@ -283,6 +283,11 @@ fly certs add booking.innospacetirana.com
 Then a Cloudflare `CNAME booking → <app>.fly.dev`. Pushing to `main` also
 auto-deploys via GitHub Actions ([.github/workflows/fly-deploy.yml](.github/workflows/fly-deploy.yml)):
 
+- **A push runs only what it changed.** A first job compares the push with the commit
+  that is live on Fly. A change to the README or `docs/` runs nothing; a change to the
+  tests or the CI runs the checks and releases nothing, since the image would be the
+  same. Anything else builds and deploys. A manual run from the Actions tab always
+  does everything.
 - **Checks** (format, lint, both type checks, tests) and the **image build** run
   side by side. The build pushes the image to Fly's registry without releasing it.
 - **The release** runs only when both have passed, so a push with a failing
