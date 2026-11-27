@@ -6,17 +6,17 @@ import { describe, expect, it } from "vitest";
 const workflow = readFileSync(".github/workflows/fly-deploy.yml", "utf8");
 const RELEASE =
   'flyctl deploy --image "registry.fly.io/innospace-bookings:sha-${GITHUB_SHA}"';
-const decide = workflow.slice(
-  workflow.indexOf("- name: Can this release change what is on the volume?"),
-  workflow.indexOf("- name: Back up the database"),
-);
+// A step that was a block of shell is a file the workflow runs, read here where the block was.
+const step = (name: string) =>
+  readFileSync(`.github/scripts/${name}.sh`, "utf8");
+const decide = step("touches-volume");
 const backup = workflow.slice(
   workflow.indexOf("- name: Back up the database"),
   workflow.indexOf(RELEASE),
 );
-const script = readFileSync(".github/scripts/backup-db.sh", "utf8");
+const script = step("backup-db");
 const nightly = readFileSync(".github/workflows/backup.yml", "utf8");
-const touches = /TOUCHES: (.+)\n/.exec(decide)?.[1].split(" ") ?? [];
+const touches = /^TOUCHES="(.+)"$/m.exec(decide)?.[1].split(" ") ?? [];
 // As git reads a pathspec without a star: the file itself, or anything under the folder.
 const under = (specs: string[], file: string) =>
   specs.some((spec) => file === spec || file.startsWith(`${spec}/`));
@@ -45,6 +45,9 @@ describe("the restore point before a release", () => {
     expect(decide).toContain('flyctl image show -a "$APP" --json');
     expect(decide).toContain('git diff --quiet "$live" HEAD -- $TOUCHES; then');
     expect(section("deploy", "release")).toContain("fetch-depth: 0");
+    expect(section("deploy", "release")).toMatch(
+      /id: touches\n[^]*?run: bash \.github\/scripts\/touches-volume\.sh\n/,
+    );
   });
 
   // A module opening the database from somewhere else would change data unseen.
@@ -115,25 +118,45 @@ describe("the restore point before a release", () => {
 });
 
 describe("what a push runs", () => {
-  const gate = section("changes", "check");
-  const check = section("check", "build");
-  const build = section("build", "deploy");
+  const check = section("check", "deploy");
   const deploy = section("deploy", "release");
+  const since = step("changed-since-green");
   const list = (name: string) =>
-    new RegExp(`${name}: (.+)\\n`).exec(gate)?.[1].split(" ") ?? [];
+    new RegExp(`^${name}="(.+)"$`, "m").exec(since)?.[1].split(" ") ?? [];
   const unchecked = list("UNCHECKED");
+  const unlinted = [...unchecked, ...list("UNLINTED")];
+  const untyped = [...unlinted, ...list("UNTYPED")];
   const unbuilt = [...unchecked, ...list("UNBUILT")];
-  // The step's rule: a job runs when a change sits outside the paths that job does not read.
+  // The script's rule: an answer is true when a change sits outside the paths it leaves out.
   const runs = (...changed: string[]) => ({
     checks: changed.some((file) => !under(unchecked, file)),
+    code: changed.some((file) => !under(unlinted, file)),
+    app: changed.some((file) => !under(untyped, file)),
     image: changed.some((file) => !under(unbuilt, file)),
   });
+  const gate = (command: string) =>
+    new RegExp(`- run: ${command}\\n\\s+if: ([^\\n]+)`).exec(check)?.[1];
   const lines = (file: string) =>
     readFileSync(file, "utf8")
       .split("\n")
       .filter((line) => line && !line.startsWith("#"));
 
-  it("runs nothing for a change that no check reads and no image holds", () => {
+  // A job bills a whole minute however short, so nothing starts only to decide or to hand on.
+  it("is three jobs at most: the checks, the build with its release, and the name", () => {
+    const jobs = [...workflow.matchAll(/^ {2}([\w-]+):\n {4}name: /gm)];
+    expect(jobs.map((m) => m[1])).toEqual(["check", "deploy", "release"]);
+    expect(deploy).toContain("flyctl deploy --build-only --push --remote-only");
+    expect(deploy.indexOf("--build-only")).toBeLessThan(
+      deploy.indexOf("- name: Can this release change"),
+    );
+  });
+
+  it("starts no runner for a push of files no check reads and no image holds", () => {
+    const ignored =
+      /paths-ignore:\n((?: {6}- .+\n)+)/.exec(workflow)?.[1] ?? "";
+    expect(
+      [...ignored.matchAll(/- (.+)\n/g)].map((m) => m[1].replace("/**", "")),
+    ).toEqual(unchecked);
     expect(unchecked).toEqual([
       "README.md",
       "LICENSE",
@@ -143,27 +166,60 @@ describe("what a push runs", () => {
     ]);
     expect(runs("README.md", "LICENSE", "docs/img/login.png")).toEqual({
       checks: false,
+      code: false,
+      app: false,
       image: false,
     });
   });
 
-  it("runs the checks alone for a change to the tests, the CI or the tooling", () => {
+  it("runs the formatter and the suite alone for a folder that holds no code", () => {
+    expect(list("UNLINTED")).toEqual([".github"]);
+    for (const file of sources(".github"))
+      expect(file).not.toMatch(/\.([cm]?[jt]sx?)$/);
     for (const file of [
-      "tests/unit/deploy-workflow.test.ts",
       ".github/workflows/fly-deploy.yml",
       ".github/scripts/backup-db.sh",
-      "vitest.config.ts",
+    ])
+      expect(runs(file, "README.md"), file).toEqual({
+        checks: true,
+        code: false,
+        app: false,
+        image: false,
+      });
+  });
+
+  it("skips the app's typecheck for what its tsconfig leaves out", () => {
+    const left = list("UNTYPED");
+    expect(left).toEqual(["tests", "vitest.config.ts"]);
+    expect(JSON.parse(readFileSync("tsconfig.json", "utf8")).exclude).toEqual(
+      expect.arrayContaining(left),
+    );
+    for (const file of ["tests/unit/deploy-workflow.test.ts", ...left.slice(1)])
+      expect(runs(file, ".github/workflows/backup.yml"), file).toEqual({
+        checks: true,
+        code: true,
+        app: false,
+        image: false,
+      });
+  });
+
+  it("runs every check and builds nothing for the tooling the image never carries", () => {
+    for (const file of [
+      "tsconfig.tests.json",
+      ".prettierrc.json",
       ".prettierignore",
       "docker-compose.yml",
     ])
       expect(runs(file, "README.md"), file).toEqual({
         checks: true,
+        code: true,
+        app: true,
         image: false,
       });
   });
 
-  // A path on neither list builds, so a new file can never be left out of a release by default.
-  it("builds and releases for anything the image holds or is made from", () => {
+  // A path on no list builds, so a new file can never be left out of a release by default.
+  it("builds and releases, behind every check, for anything the image holds or is made from", () => {
     for (const file of [
       "src/app/page.tsx",
       "public/logo.svg",
@@ -181,8 +237,12 @@ describe("what a push runs", () => {
     ])
       expect(runs(file, "README.md", "tests/setup.ts"), file).toEqual({
         checks: true,
+        code: true,
+        app: true,
         image: true,
       });
+    // Whatever a check may skip is outside the image, so a release never rests on fewer than all five.
+    expect(untyped.filter((path) => !unbuilt.includes(path))).toEqual([]);
   });
 
   // Otherwise a change to one would alter the image and still be passed over.
@@ -212,29 +272,52 @@ describe("what a push runs", () => {
     expect(files.filter(formatted)).toEqual([]);
   });
 
-  it("measures the change from the live commit, with git's own exclude", () => {
-    expect(gate).toContain("fetch-depth: 0");
-    expect(gate).toContain('flyctl image show -a "$APP" --json');
-    expect(gate).toContain('specs+=(":(exclude)$path")');
-    expect(gate).toContain('! git diff --quiet "$live" HEAD -- "${specs[@]}"');
-    expect(gate).toContain('beyond "$UNCHECKED" || checks=false');
-    expect(gate).toContain('beyond "$UNCHECKED $UNBUILT" || image=false');
+  it("runs each check on the answer for the files it reads", () => {
+    const needed = (answer: string) =>
+      `steps.changed.outputs.${answer} != 'false'`;
+    expect(gate("npm run format:check")).toBe(needed("checks"));
+    expect(gate("npm run lint")).toBe(needed("code"));
+    expect(gate("npm run typecheck")).toBe(needed("app"));
+    expect(gate("npm run typecheck:tests")).toBe(needed("code"));
+    expect(gate("npm run test")).toBe(needed("checks"));
+    // Only a plain "false" skips one, so an answer that went missing still runs it.
+    expect(check).not.toContain("== 'true'");
   });
 
-  it("runs everything on a manual run, an image no commit names or a missing answer", () => {
-    expect(gate).toMatch(/\) \|\| live=\n/);
-    expect(gate).toMatch(
-      /checks=true image=true\n(\s+#[^\n]*\n)*\s+if \[ "\$GITHUB_EVENT_NAME" = push \] && \[ -n "\$live" \]; then\n/,
+  // The push before may have failed, so only a run that passed proves the files it held.
+  it("measures the change from this workflow's last green run, with git's own exclude", () => {
+    expect(since).toContain(
+      "actions/workflows/fly-deploy.yml/runs?branch=$GITHUB_REF_NAME&event=push&status=success&per_page=1",
     );
-    expect(check).toContain("if: needs.changes.outputs.checks != 'false'");
-    expect(build).toContain("if: needs.changes.outputs.image != 'false'");
+    expect(check).toContain("actions: read");
+    expect(check).toContain("fetch-depth: 0");
+    expect(check).toMatch(
+      /id: changed\n\s+env:\n\s+GH_TOKEN: \$\{\{ github\.token \}\}\n\s+run: bash \.github\/scripts\/changed-since-green\.sh\n/,
+    );
+    expect(check).toContain("image: ${{ steps.changed.outputs.image }}");
+    expect(since).toContain('specs+=(":(exclude)$path")');
+    expect(since).toContain('! git diff --quiet "$base" HEAD -- "${specs[@]}"');
+  });
+
+  it("runs everything on a manual run, without a green run or on a missing answer", () => {
+    expect(since).toMatch(
+      /^base=\nif \[ "\$GITHUB_EVENT_NAME" = push \]; then\n/m,
+    );
+    expect(since).toMatch(/\) \|\| base=\n/);
+    expect(since).toContain('[ -n "$base" ] || return 0');
+    expect(deploy).toContain("if: needs.check.outputs.image != 'false'");
+  });
+
+  // Its dependencies are hundreds of packages nobody here wrote, and Fly's token reaches the database.
+  it("hands the checks no secret", () => {
+    expect(check).not.toContain("secrets.");
+    expect(check).not.toContain("flyctl");
+    expect(check).toMatch(/permissions:\n\s+contents: read\n\s+actions: read/);
   });
 
   // A job waits for a skipped one only when told to, and nothing here tells it.
-  it("releases nothing when the checks or the build were skipped or failed", () => {
-    expect(check).toContain("needs: changes");
-    expect(build).toContain("needs: changes");
-    expect(deploy).toContain("needs: [check, build]");
+  it("releases nothing when the checks were skipped or failed", () => {
+    expect(deploy).toContain("needs: check");
     expect(workflow).toContain("needs: deploy");
     expect(workflow).not.toMatch(/always\(\)|cancelled\(\)|failure\(\)/);
   });
@@ -244,8 +327,8 @@ describe("what a push runs", () => {
     expect(check).toContain(
       "key: modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json') }}",
     );
-    expect(check).toMatch(
-      /if: steps\.modules\.outputs\.cache-hit != 'true'\n\s+run: npm ci\n/,
+    expect(gate("npm ci")).toBe(
+      "steps.changed.outputs.checks != 'false' && steps.modules.outputs.cache-hit != 'true'",
     );
     expect(check).toContain("node-version: 22");
   });
@@ -329,45 +412,106 @@ describe("the database backup", () => {
 
 describe("the release's description", () => {
   const job = workflow.slice(workflow.indexOf("  release:\n"));
-  const step = job.slice(
+  const ask = job.slice(
     job.indexOf("- name: Ask Copilot for the description"),
     job.indexOf("- name: Create the tag and the GitHub release"),
   );
+  const notes = step("release-notes");
 
   it("is worded by Copilot, which only the release job may ask", () => {
+    // Its package is fetched fresh at every release, so its job holds no key to Fly or the backups.
+    expect(job).not.toMatch(/FLY_API_TOKEN|R2_|CLOUDFLARE/);
     expect(job).toContain("copilot-requests: write");
     expect(workflow.match(/copilot-requests: write/g)).toHaveLength(1);
-    expect(step).toContain("GH_TOKEN: ${{ github.token }}");
-    expect(step).toMatch(/COPILOT_CLI: "\d+\.\d+\.\d+"/);
-    expect(step).toContain('"@github/copilot@$COPILOT_CLI"');
+    expect(ask).toContain("GH_TOKEN: ${{ github.token }}");
+    expect(ask).toMatch(/COPILOT_CLI: "\d+\.\d+\.\d+"/);
+    expect(ask).toContain("run: bash .github/scripts/release-notes.sh");
+    expect(notes).toContain('"@github/copilot@$COPILOT_CLI"');
   });
 
   // The words must come from what was released, not from what the model can go and find.
   it("hands Copilot the commits since the last release and no tools", () => {
-    expect(step).toContain('"repos/$GITHUB_REPOSITORY/releases/latest"');
-    expect(step).toContain(
+    expect(notes).toContain('"repos/$GITHUB_REPOSITORY/releases/latest"');
+    expect(notes).toContain(
       '"repos/$GITHUB_REPOSITORY/compare/$previous...$GITHUB_SHA"',
     );
-    expect(step).toContain("--available-tools=");
-    expect(step).toContain("never invent a change");
+    expect(notes).toContain("--available-tools=");
+    expect(ask).toContain("never invent a change");
+  });
+
+  // The checkout puts the scripts in the workspace, where the job's token could be left too.
+  it("gives Copilot an empty folder, and leaves no token in the checkout", () => {
+    expect(notes.indexOf('cd "$(mktemp -d)"')).toBeGreaterThan(-1);
+    expect(notes.indexOf('cd "$(mktemp -d)"')).toBeLessThan(
+      notes.indexOf("copilot -p"),
+    );
+    expect(job).toMatch(
+      /- uses: actions\/checkout@v\d+\n\s+with:\n\s+persist-credentials: false\n/,
+    );
   });
 
   it("describes nothing for a release that exists or a commit with nothing new", () => {
-    expect(step).toContain('[ -n "$TAG" ] || exit 0');
-    expect(step).toMatch(/gh release view "\$TAG"[^\n]+then exit 0; fi/);
-    expect(step).toContain(
+    expect(notes).toContain('[ -n "${TAG:-}" ] || exit 0');
+    expect(notes).toMatch(/gh release view "\$TAG"[^\n]+then exit 0; fi/);
+    expect(notes).toContain(
       `grep -q '^- ' "$RUNNER_TEMP/changes.txt" || exit 0`,
     );
   });
 
   // The release matters more than its wording, so a Copilot outage must not cost the tag.
   it("never stops the release: a failure leaves GitHub's own notes", () => {
-    expect(step).toContain("continue-on-error: true");
-    expect(step).toContain("timeout-minutes: 3");
-    expect(step).toContain(
+    expect(ask).toContain("continue-on-error: true");
+    expect(ask).toContain("timeout-minutes: 3");
+    expect(notes).toContain(
       'mv "$RUNNER_TEMP/draft.md" "$RUNNER_TEMP/notes.md"',
     );
-    expect(job).toContain('if [ -s "$RUNNER_TEMP/notes.md" ]; then notes=(');
-    expect(job).toContain('--generate-notes "${notes[@]}"');
+    const create = step("release-create");
+    expect(job).toContain("run: bash .github/scripts/release-create.sh");
+    expect(create).toContain('if [ -s "$RUNNER_TEMP/notes.md" ]; then notes=(');
+    expect(create).toContain('--generate-notes ${notes[@]+"${notes[@]}"}');
+  });
+});
+
+describe("the scripts the workflows run", () => {
+  const workflows = sources(".github/workflows").map((file) => ({
+    file,
+    text: readFileSync(file, "utf8"),
+  }));
+  const scripts = sources(".github/scripts");
+  const ran = (text: string) =>
+    [...text.matchAll(/run: bash (\.github\/scripts\/[\w-]+\.sh)/g)].map(
+      (m) => m[1],
+    );
+
+  // A typed block runs nowhere but on GitHub; a file runs here, under a test.
+  it("are files: no workflow types a block of shell of its own", () => {
+    for (const { file, text } of workflows)
+      expect(text, file).not.toMatch(/run: [|>]/);
+  });
+
+  it("all exist, and none is left unrun", () => {
+    const named = workflows.flatMap(({ text }) => ran(text));
+    expect([...new Set(named)].sort()).toEqual([...scripts].sort());
+  });
+
+  // bash <file> gets none of the -e the runner's shell gave a typed block.
+  it("each stop at the first failure, unset variable or broken pipe", () => {
+    for (const file of scripts)
+      expect(readFileSync(file, "utf8"), file).toMatch(/^set -euo pipefail$/m);
+  });
+
+  it("are checked out before the first of them runs, in every job", () => {
+    for (const { file, text } of workflows) {
+      const jobs = text
+        .slice(text.indexOf("\njobs:\n"))
+        .split(/\n(?= {2}[\w-]+:\n)/)
+        .filter((job) => ran(job).length > 0);
+      expect(jobs.length, file).toBeGreaterThan(0);
+      for (const job of jobs) {
+        const checkout = job.indexOf("- uses: actions/checkout@");
+        expect(checkout, file).toBeGreaterThan(-1);
+        expect(checkout, file).toBeLessThan(job.indexOf("run: bash .github/"));
+      }
+    }
   });
 });

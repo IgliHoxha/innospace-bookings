@@ -283,15 +283,15 @@ fly certs add booking.innospacetirana.com
 Then a Cloudflare `CNAME booking → <app>.fly.dev`. Pushing to `main` also
 auto-deploys via GitHub Actions ([.github/workflows/fly-deploy.yml](.github/workflows/fly-deploy.yml)):
 
-- **A push runs only what it changed.** A first job compares the push with the commit
-  that is live on Fly. A change to the README or `docs/` runs nothing; a change to the
-  tests or the CI runs the checks and releases nothing, since the image would be the
-  same. Anything else builds and deploys. A manual run from the Actions tab always
-  does everything.
-- **Checks** (format, lint, both type checks, tests) and the **image build** run
-  side by side. The build pushes the image to Fly's registry without releasing it.
-- **The release** runs only when both have passed, so a push with a failing
-  test never reaches production.
+- **A push runs only what it changed.** The first job compares the push with the last
+  commit this workflow passed. A change to the README or `docs/` starts nothing at all;
+  a change to the tests or the CI runs the checks that read it and releases nothing,
+  since the image would be the same. Anything else builds and deploys. A manual run
+  from the Actions tab always does everything.
+- **Three jobs at most**, since GitHub bills each job a whole minute: the **checks**
+  (format, lint, both type checks, tests), then **build and deploy**, then the name.
+- **The release** runs only when the checks have passed, so a push with a failing
+  test never reaches production. The image is built on the deploy job's own runner.
 - Runs are queued one at a time, so an older commit cannot deploy over a newer one.
 - **Each deploy is named.** A last job asks the couch-gag service for this repo's
   next Simpsons episode, then creates a tag such as

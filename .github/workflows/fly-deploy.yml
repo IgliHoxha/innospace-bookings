@@ -5,6 +5,13 @@ on:
   push:
     branches:
       - main
+    # Read by no check and held by no image, so a push of these alone starts no runner.
+    paths-ignore:
+      - README.md
+      - LICENSE
+      - Makefile
+      - .env.example
+      - docs/**
   workflow_dispatch: # allow manual deploys from the Actions tab
 
 # One run at a time, oldest first, so an older commit can never deploy over a
@@ -17,133 +24,83 @@ concurrency:
 permissions:
   contents: read
 
+# A job bills whole minutes, so a push starts as few as it can: one for the checks,
+# and for a change to the image one that builds and deploys and one that names it.
 jobs:
-  # Decides which jobs below this push needs, so a change to the notes, the tests or the CI
-  # runs only what reads it and never releases an image identical to the live one.
-  changes:
-    name: What changed
+  # Holds no secret: its dependencies are hundreds of packages nobody here wrote.
+  check:
+    name: Format, lint, types and tests
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read # the last green run is read from this workflow's own history
     outputs:
-      checks: ${{ steps.since.outputs.checks }}
-      image: ${{ steps.since.outputs.image }}
+      image: ${{ steps.changed.outputs.image }}
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # the diff below reaches back to the commit that is live
-      - uses: superfly/flyctl-actions/setup-flyctl@1.6
-      - name: What changed since the live commit?
-        id: since
+          fetch-depth: 0 # the diff below reaches back to the last commit that passed
+      # Decided here, on the runner the checks use, so no job starts only to decide.
+      - name: What does this push need?
+        id: changed
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          APP: innospace-bookings
-          # Read by no check and held by no image: Prettier skips them and no test opens them.
-          UNCHECKED: README.md LICENSE Makefile .env.example docs
-          # Read by the checks, but kept out of the image by .dockerignore.
-          UNBUILT: tests .github .gitignore .prettierrc.json .prettierignore tsconfig.tests.json vitest.config.ts docker-compose.yml
-        run: |
-          set -euo pipefail
-          live=$(flyctl image show -a "$APP" --json | jq -r '.[0].Tag // empty' | sed 's/^sha-//') || live=
-          # True unless every change since the live commit sits under the given paths.
-          # A diff git cannot make counts as a change, and so does a path on neither list.
-          beyond() {
-            local path specs=(.)
-            for path in $1; do specs+=(":(exclude)$path"); done
-            ! git diff --quiet "$live" HEAD -- "${specs[@]}"
-          }
-          checks=true image=true
-          # From what is live, not the last push: a failed or superseded run hides no change.
-          # A manual run, an image no commit names or Fly not answering runs everything.
-          if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$live" ]; then
-            beyond "$UNCHECKED" || checks=false
-            beyond "$UNCHECKED $UNBUILT" || image=false
-          fi
-          echo "checks=$checks" >> "$GITHUB_OUTPUT"
-          echo "image=$image" >> "$GITHUB_OUTPUT"
-          if [ "$checks" = false ]; then
-            echo "Nothing a check reads changed since $live: no checks, no build, no release." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "$image" = false ]; then
-            echo "Nothing in the image changed since $live: the checks run, nothing is built or released." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-  check:
-    name: Format, lint, types and tests
-    needs: changes
-    # Anything but a plain "false" runs it, so a missing answer never skips the checks.
-    if: needs.changes.outputs.checks != 'false'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/changed-since-green.sh
+      # Only a plain "false" skips a step below, so a missing answer never skips a check.
       - uses: actions/setup-node@v7
+        if: steps.changed.outputs.checks != 'false'
         with:
           node-version: 22
       # The installed modules are kept whole, so only a lockfile change pays for an install.
       - uses: actions/cache@v6
         id: modules
+        if: steps.changed.outputs.checks != 'false'
         with:
           path: node_modules
           key: modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json') }}
-      - if: steps.modules.outputs.cache-hit != 'true'
-        run: npm ci
+      - run: npm ci
+        if: steps.changed.outputs.checks != 'false' && steps.modules.outputs.cache-hit != 'true'
+      # Prettier reads the workflows and the suite reads nearly every file, so both always run.
       - run: npm run format:check
+        if: steps.changed.outputs.checks != 'false'
+      # ESLint and the tests' typecheck read code, which .github holds none of.
       - run: npm run lint
+        if: steps.changed.outputs.code != 'false'
+      # The app's typecheck leaves the tests out, so a change to them alone skips it.
       - run: npm run typecheck
+        if: steps.changed.outputs.app != 'false'
       - run: npm run typecheck:tests
+        if: steps.changed.outputs.code != 'false'
       - run: npm run test
+        if: steps.changed.outputs.checks != 'false'
 
-  # Runs beside the checks rather than after them, so gating the release on the
-  # checks costs no time: the image is built and pushed, but not released.
-  build:
-    name: Build image
-    needs: changes
-    # Skipped when the image would match the live one; the deploy and its release then skip too.
-    if: needs.changes.outputs.image != 'false'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: superfly/flyctl-actions/setup-flyctl@1.6
-        # fly.toml is gitignored (config lives in `fly secrets`); the committed
-        # fly.toml.example carries the non-secret app config CI deploys with.
-      - run: flyctl deploy --build-only --push --remote-only --image-label "sha-${GITHUB_SHA}" --config fly.toml.example
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-  # Releases the image built above, and only once the checks have passed.
-  # A skipped check or build skips this job as well, so no image means no release.
+  # Builds, backs up and releases on one runner, and only once the checks have passed.
   deploy:
-    name: Deploy app
-    needs: [check, build]
+    name: Build and deploy
+    needs: check
+    # Never starts when the image would match the live one, and the naming job then skips too.
+    # Anything but a plain "false" releases, so a missing answer never leaves a change behind.
+    if: needs.check.outputs.image != 'false'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the diff below reaches back to the commit that is live
       - uses: superfly/flyctl-actions/setup-flyctl@1.6
+      # fly.toml is gitignored (config lives in `fly secrets`); the committed
+      # fly.toml.example carries the non-secret app config CI deploys with.
+      - name: Build image
+        run: flyctl deploy --build-only --push --remote-only --image-label "sha-${GITHUB_SHA}" --config fly.toml.example
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       # A release may change the data one way, so one that can touch the volume is backed up first.
       - name: Can this release change what is on the volume?
         id: touches
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          APP: innospace-bookings
-          # What opens or lays out the volume: the database modules, the image's boot and the mount.
-          TOUCHES: src/lib/db.ts Dockerfile docker-entrypoint.sh fly.toml.example
-        run: |
-          set -euo pipefail
-          # The live image's tag is its commit, with "sha-" stripped where the label carries it.
-          live=$(flyctl image show -a "$APP" --json | jq -r '.[0].Tag // empty' | sed 's/^sha-//') || live=
-          # From what is live, not the last push: a failed or superseded run hides no change.
-          # shellcheck disable=SC2086
-          if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$live" ] && git diff --quiet "$live" HEAD -- $TOUCHES; then
-            echo "::notice::Nothing that touches the volume changed since $live, so no backup is taken."
-            echo "No restore point for this release: nothing that touches the volume changed." >> "$GITHUB_STEP_SUMMARY"
-            echo "needed=false" >> "$GITHUB_OUTPUT"
-          else
-            # A manual run, an image no commit names, or a diff git could not make: back up anyway.
-            echo "needed=true" >> "$GITHUB_OUTPUT"
-          fi
+        run: bash .github/scripts/touches-volume.sh
       # Anything but a plain "false" takes it, so a missing answer never skips a restore point.
       - name: Back up the database
         if: steps.touches.outputs.needed != 'false'
@@ -159,6 +116,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
   # Runs only after a deploy that went out, so a tag always marks a build that reached production.
+  # A job of its own: Copilot's package is fetched fresh, and this one holds no key to Fly or the backups.
   release:
     name: Name the release
     needs: deploy
@@ -168,23 +126,17 @@ jobs:
       contents: write # the default token is read-only
       copilot-requests: write # Copilot words the description, billed to the owner's seat
     steps:
+      # For the scripts below. No token is left in the folder: this job's can write to the repository.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # couch-gag gives the same episode for the same commit, so a re-run uses no new one.
       - name: Ask couch-gag for this release's episode
         id: episode
         env:
           COUCH_GAG_URL: ${{ vars.COUCH_GAG_URL }}
           COUCH_GAG_KEY: ${{ secrets.COUCH_GAG_KEY }}
-        run: |
-          body=$(jq -n --arg repo "$GITHUB_REPOSITORY" --arg ref "$GITHUB_SHA" '{repo: $repo, ref: $ref}')
-          release=$(curl --fail-with-body -sS --retry 4 --retry-all-errors --max-time 20 \
-            -H "Authorization: Bearer $COUCH_GAG_KEY" -H "Content-Type: application/json" \
-            -d "$body" "$COUCH_GAG_URL/v1/releases")
-          tag=$(jq -r '"r\(.sequence)-\(.slug)"' <<<"$release")
-          if ! [[ "$tag" =~ ^r[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
-            echo "::error::couch-gag answered something that is not a release: $release"; exit 1
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "title=$(jq -r '.name' <<<"$release")" >> "$GITHUB_OUTPUT"
+        run: bash .github/scripts/release-name.sh
 
       # Copilot words the description from the commits since the last release, on the owner's seat.
       - name: Ask Copilot for the description
@@ -205,43 +157,11 @@ jobs:
             Describe only what the commits and files show and never invent a change.
             Use plain hyphens, never an em dash or an en dash.
             Do not use tools: everything you need is below. Keep it under 200 words.
-        run: |
-          set -euo pipefail
-          # Nothing to describe without a tag, and an existing release keeps the text it has.
-          [ -n "$TAG" ] || exit 0
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then exit 0; fi
-          previous=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null) || previous=
-          subjects='"- " + (.commit.message | split("\n") | map(select(length > 0)) | join("\n  "))'
-          if [ -n "$previous" ]; then
-            gh api "repos/$GITHUB_REPOSITORY/compare/$previous...$GITHUB_SHA" --jq \
-              "\"Commits:\n\" + ([.commits[] | $subjects] | join(\"\n\")) + \"\n\nFiles changed:\n\" + ([.files[] | \"\(.status) \(.filename) (+\(.additions) -\(.deletions))\"] | join(\"\n\"))" \
-              > "$RUNNER_TEMP/changes.txt"
-          else
-            # A first release has nothing to compare with, so its last commits stand in.
-            gh api "repos/$GITHUB_REPOSITORY/commits?sha=$GITHUB_SHA&per_page=20" --jq \
-              "\"Commits:\n\" + ([.[] | $subjects] | join(\"\n\"))" > "$RUNNER_TEMP/changes.txt"
-          fi
-          # A commit released twice has nothing new to describe, and Copilot would say so in the release.
-          grep -q '^- ' "$RUNNER_TEMP/changes.txt" || exit 0
-          npm install --global --silent --no-audit --no-fund "@github/copilot@$COPILOT_CLI"
-          # No tools, so it can only word what it is handed; capped so a large release still fits one prompt.
-          copilot -p "$RULES"$'\n\n'"$(head -c 20000 "$RUNNER_TEMP/changes.txt")" -s --available-tools= > "$RUNNER_TEMP/draft.md"
-          [ -s "$RUNNER_TEMP/draft.md" ] || { echo "::warning::Copilot wrote nothing, so the release keeps GitHub's own notes."; exit 1; }
-          mv "$RUNNER_TEMP/draft.md" "$RUNNER_TEMP/notes.md"
-          cat "$RUNNER_TEMP/notes.md" >> "$GITHUB_STEP_SUMMARY"
+        run: bash .github/scripts/release-notes.sh
 
       - name: Create the tag and the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.episode.outputs.tag }}
           TITLE: ${{ steps.episode.outputs.title }}
-        run: |
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG already exists."
-          else
-            # Copilot's words go above GitHub's own list; without them the list stands alone.
-            notes=()
-            if [ -s "$RUNNER_TEMP/notes.md" ]; then notes=(--notes "$(cat "$RUNNER_TEMP/notes.md")"); fi
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-              --title "$TITLE" --generate-notes "${notes[@]}"
-          fi
+        run: bash .github/scripts/release-create.sh
